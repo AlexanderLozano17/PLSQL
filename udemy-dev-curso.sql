@@ -1741,3 +1741,228 @@ BEGIN
     pr_registrar_region('Sur AMerica');
 END;
 /
+
+/** ----------------------------------------
+||   USER_OBJECTS PLSQL
+|| -----------------------------------------
+*/
+SELECT * FROM USER_OBJECTS 
+WHERE OBJECT_TYPE='PROCEDURE';
+
+SELECT OBJECT_TYPE,COUNT(*) FROM USER_OBJECTS
+GROUP BY OBJECT_TYPE;
+
+SELECT * FROM USER_SOURCE
+WHERE NAME='pr_registrar_region';
+
+SELECT TEXT FROM USER_SOURCE
+WHERE NAME='pr_registrar_region';
+
+
+/** ----------------------------------------
+||         PARAMETROS PLSQL
+|| -----------------------------------------
+|| DESCRIPCIÓN:
+|| Los parámetros en PL/SQL son los mecanismos que permiten que los procedimientos 
+|| y funciones almacenados se comuniquen con el mundo exterior, es decir, reciban 
+|| datos de la aplicación que los llama o devuelvan datos a ella.
+||
+|| ## Modos de Parámetros ##
+|| En PL/SQL, cada parámetro debe definirse con un modo que especifica cómo se utiliza 
+|| la información. Hay tres modos principales:
+||
+|| 1. IN (Entrada)
+|| - Propósito: El valor se pasa del programa que llama al subprograma (procedimiento o función).
+|| - Comportamiento: El valor se trata como una constante dentro del subprograma. No puedes modificar el valor del parámetro IN dentro del cuerpo del procedimiento o función.
+|| - Modo por defecto: Si omites el modo en la declaración, Git asume que el parámetro es IN
+||
+||   PROCEDURE pr_actualizar_salario (
+||      p_empleado_id   IN NUMBER, -- Recibe el ID
+||      p_aumento       IN NUMBER      -- Recibe el porcentaje de aumento
+||   )
+||
+|| 2. OUT (Salida)
+|| - Propósito: El subprograma utiliza el parámetro para devolver un valor al programa que lo llama.
+|| - Comportamiento: La variable se inicializa a NULL al entrar al subprograma. Su valor se ignora al ser llamada. El subprograma debe asignar un valor al parámetro OUT para que sea visible fuera de él.
+|| - Restricción: No se puede usar como parte de una expresión en una sentencia SQL.
+||
+||   PROCEDURE pr_obtener_datos_emp (
+||      p_empleado_id       IN  NUMBER,
+||      p_nombre_completo   OUT VARCHAR2, -- Devuelve el nombre
+||      p_salario_actual    OUT NUMBER     -- Devuelve el salario
+||  )
+||
+|| 3. IN OUT (Entrada y Salida)
+|| - Propósito: La variable se pasa al subprograma (como IN) y luego su valor puede ser modificado y devuelto al programa que llama (como OUT).
+|| - Comportamiento: Se utiliza típicamente para contadores o para modificar estructuras de datos (como colecciones) y devolver la estructura modificada.
+|| 
+||  PROCEDURE pr_ajustar_y_contar (
+||      p_contador IN OUT NUMBER, -- Recibe un valor y lo devuelve modificado
+||      p_ajuste IN NUMBER
+||  )
+||  AS
+||  BEGIN
+||      p_contador := p_contador + p_ajuste;
+||     -- ... lógica que usa y modifica el contador
+||  END;
+*/
+
+CREATE OR REPLACE PROCEDURE pr_ejemplo_parametros (
+    p_id_entrada    IN      NUMBER,
+    p_resultado     OUT     VARCHAR2,
+    p_contador      IN OUT  NUMBER,
+    p_opcional      IN      VARCHAR2    DEFAULT 'Ninguna' -- Parametro con valor por defecto
+)
+AS
+    -- ..
+BEGIN
+    -- Lógica IN yOUT
+    SELECT first_name 
+    INTO p_resultado
+    FROM employees
+    WHERE employee_id = p_id_entrada;
+    
+    -- Lógica con IN OUT
+    p_contador := p_contador + 1;
+    
+    DBMS_OUTPUT.PUT_LINE('Opcion: ' || p_opcional);   
+    
+EXCEPTION
+    WHEN NO_DATA_FOUND THEN
+        p_resultado := 'ID No Encontrado'; -- Manejar el caso de que el SELECT no devuelva nada
+        p_contador := p_contador; -- No modificar el contador en caso de fallo
+    WHEN OTHERS THEN
+        p_resultado := 'Error';
+        RAISE;
+
+END pr_ejemplo_parametros;
+/
+
+-- ----------------------------------------
+--  Llamando al procedimiento
+-- -----------------------------------------
+DECLARE
+    v_nombre    VARCHAR2(25) := 'Alexander';
+    v_conteo    NUMBER := 1;
+BEGIN
+    pr_ejemplo_parametros(
+        p_id_entrada => 100,
+        p_resultado => v_nombre,
+        p_contador => v_conteo
+    );
+    
+     DBMS_OUTPUT.PUT_LINE('Respuesta del procedimiento: ' || v_conteo);   
+END;
+
+/** ----------------------------------------
+||         FUNCIONES EN PLSQL
+|| -----------------------------------------
+|| DESCRIPCIÓN:
+|| son subprogramas nombrados, precompilados y almacenados en la base de datos, 
+|| diseñados para calcular y devolver un único valor al programa o sentencia SQL que las llama.
+||
+|| Son la herramienta principal para encapsular lógica de cálculo y reutilizarla en sentencias SQL.
+||
+|| ## Estructura Básica ##
+|| La sintaxis de una función es muy similar a la de un procedimiento, con dos diferencias clave: 
+|| el uso de la cláusula RETURN en la declaración y la necesidad de una sentencia RETURN dentro del bloque BEGIN.
+||
+|| CREATE OR REPLACE FUNCTION nombre_funcion (
+||     parametro1 IN TIPO,
+||     parametro2 IN TIPO DEFAULT valor_inicial
+|| )
+|| -- CLÁUSULA ESENCIAL: Define el tipo de dato que se devolverá
+|| RETURN TIPO_DE_RETORNO
+|| AS
+||     -- Sección de Declaración: Variables locales
+||     v_resultado TIPO_DE_RETORNO; 
+|| BEGIN
+||     -- Sección de Ejecución: Lógica de cálculo
+||     v_resultado := parametro1 * 0.15; -- Ejemplo de cálculo
+|| 
+||     -- CLÁUSULA ESENCIAL: Devuelve el valor calculado
+||     RETURN v_resultado; 
+|| 
+|| EXCEPTION
+||     -- Manejo de errores
+||     WHEN OTHERS THEN
+||         RETURN NULL; -- Devolver NULL o un valor de error específico
+|| END;
+|| /
+||
+||  === Diferencias Clave con los Procedimientos ===
+||
+|| Característica	    Función	                                    Procedimiento
+|| Valor de Retorno	    Obligatorio. Devuelve un único valor	    No devuelve valor; usa parámetros 
+||                      escalar (NUMBER, VARCHAR2, DATE, etc.)      OUT para enviar datos.
+||
+|| Uso en SQL	        Se puede llamar directamente en 	        No se puede llamar en sentencias SQL; 
+||                      sentencias SELECT, WHERE, VALUES, etc.      debe usarse en bloques PL/SQL.
+||
+|| Transacciones	    No debe contener COMMIT o ROLLBACK 	        Puede contener COMMIT o ROLLBACK.
+||                      si se usa en sentencias SQL.
+||
+|| Propósito	        Responder una pregunta 	                    Ejecutar una acción (ej. Insertar 
+||                      (ej. ¿Cuál es el salario neto?).            log, actualizar estado).
+*/
+
+CREATE OR REPLACE FUNCTION fn_calcular_impuesto(
+    p_salario IN NUMBER
+)
+RETURN NUMBER -- La función devolerá un número
+AS
+    v_tasa_impuesto CONSTANT NUMBER := 0.10; -- 10% de impuesto
+
+BEGIN
+    -- Devolver el 10% del salario
+    RETURN p_salario * v_tasa_impuesto;
+    
+EXCEPTION 
+    -- En caso de que p_salario sea NULL o haya otro error
+    WHEN OTHERS THEN
+        RETURN 0; -- Devuelve 0 en caso de error
+
+END;
+/
+
+-- ----------------------------------------
+--  Uso de la Función en SQL
+-- -----------------------------------------
+-- SQL
+SELECT 
+    first_name,
+    employee_id,
+    salary,
+    fn_calcular_impuesto(salary) AS monto_impuesto,
+    (salary- fn_calcular_impuesto(salary)) AS salario_neto
+FROM employees
+WHERE department_id = 90;
+
+--PLSQL
+BEGIN
+    FOR r_empleado_info IN (
+        SELECT 
+            first_name,
+            employee_id,
+            salary,
+            fn_calcular_impuesto(salary) AS monto_impuesto,
+            (salary- fn_calcular_impuesto(salary)) AS salario_neto
+        FROM employees
+        WHERE department_id = 90
+    )
+    LOOP
+        DBMS_OUTPUT.PUT_LINE('Nombre: ' || r_empleado_info.first_name ||
+                             ', Emp ID: ' || r_empleado_info.employee_id ||
+                             ', Salario: ' || r_empleado_info.salary ||
+                             ', Monto Impuesto: ' || r_empleado_info.monto_impuesto || 
+                             ', Salario Neto: ' || r_empleado_info.salario_neto);
+    END LOOP;
+END;
+/
+
+/** ----------------------------------------
+||         PAQUTES EN PLSQL
+|| -----------------------------------------
+|| DESCRIPCIÓN:
+||
+*/
