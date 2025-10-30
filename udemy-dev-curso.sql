@@ -1705,6 +1705,7 @@ END;
 ||                     (cambios de estado, ETL, etc.).  
 */
 
+-- EJEMPLO PROCEDIMIENTO # 1
 CREATE OR REPLACE PROCEDURE pr_registrar_region (
     p_region_name IN VARCHAR2  -- Parámetro de entrada
 )
@@ -1734,7 +1735,7 @@ END pr_registrar_region;
 /
 
 -- ----------------------------------------
---   Ejemplo de Eliminación (DELETE)
+--      Llamado al procedimiento
 -- -----------------------------------------
 BEGIN
     pr_registrar_region('Centro America');
@@ -1961,8 +1962,349 @@ END;
 /
 
 /** ----------------------------------------
-||         PAQUTES EN PLSQL
+||         PAQUETES EN PLSQL
 || -----------------------------------------
 || DESCRIPCIÓN:
+|| son contenedores que agrupan lógicamente procedimientos, funciones, variables, 
+|| cursores, excepciones y tipos de datos relacionados en una sola unidad almacenada 
+|| en la base de datos. 📦 Son fundamentales para la modularidad, la organización del código y la seguridad en Oracle.
 ||
+||  ## Estructura de un Paquete ##
+||  Un paquete consta de dos partes separadas pero interdependientes, cada una creada 
+||  con su propio comando CREATE OR REPLACE:
+||
+||  1. Especificación o Cabecera (PACKAGE)
+||  Define la interfaz pública del paquete. Es decir, declara qué objetos son visibles y accesibles desde fuera del paquete.
+||  * Propósito: Actúa como un contrato. Indica lo que el paquete puede hacer.
+||  * Contiene: Solo las declaraciones (cabeceras) de funciones y procedimientos públicos, la declaración de variables públicas (constantes), tipos de datos y cursores.
+||
+||*/
+
+CREATE OR REPLACE PACKAGE pkg_gestion_empleados AS
+    
+    -- ----------------------------------------
+    -- Cabecera de función pública
+    -- -----------------------------------------
+    FUNCTION fn_existe_empleado(p_email IN VARCHAR2)
+    RETURN VARCHAR2;
+    
+    -- ----------------------------------------
+    -- Cabecera de procedimiento público
+    -- -----------------------------------------
+    PROCEDURE pr_crear_empleado(
+        p_first_name        IN employees.first_name     %TYPE,
+        p_last_name         IN employees.last_name      %TYPE,
+        p_email             IN employees.email          %TYPE,
+        p_phone_number      IN employees.phone_number   %TYPE,
+        p_job_id            IN employees.job_id         %TYPE,
+        p_salary            IN employees.salary         %TYPE,
+        p_manager_id        IN employees.manager_id     %TYPE,
+        p_department_id     IN employees.department_id  %TYPE,
+        p_empleado          OUT employees               %ROWTYPE
+    );
+    
+END pkg_gestion_empleados;
+/
+
+/**
+||  2. Cuerpo (PACKAGE BODY)
+||  Contiene la implementación (el código PL/SQL real) de todos los subprogramas declarados en la especificación, además de cualquier objeto privado.
+||  * Propósito: Contiene la lógica de negocio. Indica el cómo se hace.
+||  * Contiene: El código completo de las funciones y procedimientos. Puede contener objetos privados (variables, cursores, subprogramas auxiliares) que solo son accesibles desde dentro del cuerpo del paquete.
+||*/
+
+CREATE OR REPLACE PACKAGE BODY pkg_gestion_empleados AS
+
+    -- ----------------------------------------
+    -- Implementación de la Función (obligatoria)
+    -- -----------------------------------------
+    FUNCTION fn_existe_empleado(p_email IN VARCHAR2) 
+    RETURN VARCHAR2
+    AS 
+        v_count NUMBER;
+        
+    BEGIN    
+        SELECT COUNT(*)
+        INTO v_count
+        FROM employees
+        WHERE UPPER(email) = UPPER(p_email);
+        
+        RETURN CASE WHEN v_count > 0 THEN 'S' ELSE 'N' END;
+        
+    EXCEPTION
+        WHEN OTHERS THEN 
+           DBMS_OUTPUT.PUT_LINE('Error');
+           RETURN 'E';
+    
+    END fn_existe_empleado;    
+
+
+    -- ----------------------------------------
+    -- Implementación del Procedimiento (obligatoria)
+    -- -----------------------------------------
+    PROCEDURE pr_crear_empleado(
+        p_first_name        IN employees.first_name     %TYPE,
+        p_last_name         IN employees.last_name      %TYPE,
+        p_email             IN employees.email          %TYPE,
+        p_phone_number      IN employees.phone_number   %TYPE,
+        p_job_id            IN employees.job_id         %TYPE,
+        p_salary            IN employees.salary         %TYPE,
+        p_manager_id        IN employees.manager_id     %TYPE,
+        p_department_id     IN employees.department_id  %TYPE,
+        p_empleado          OUT employees               %ROWTYPE
+    )
+    AS
+        v_consecutivo       employees.employee_id%TYPE;
+        v_existe_empleado   VARCHAR2(1);
+        
+    BEGIN
+    
+        -- Verifica si el empleado ya esta registrado
+        v_existe_empleado := fn_existe_empleado(p_email);
+        IF v_existe_empleado =  'E' THEN     
+            RAISE_APPLICATION_ERROR(-20002, ' Error al verificar existencia del empleado');
+            
+        ELSIF v_existe_empleado = 'S' THEN
+            RAISE_APPLICATION_ERROR(-20001, ' El empleado con email ' || p_email || ' Ya existe');
+            
+        ELSE
+            -- Obtener el siguiente valor de la secuencia (Seguro para concurrencia)
+            SELECT employees_seq.NEXTVAL
+            INTO v_consecutivo
+            FROM dual;        
+            
+            -- Insertar el empleado
+            INSERT INTO employees (employee_id, 
+                first_name, 
+                last_name, 
+                email, 
+                phone_number, 
+                job_id, 
+                salary, 
+                manager_id, 
+                department_id,
+                hire_date)
+            VALUES(v_consecutivo, 
+                p_first_name, 
+                p_last_name, 
+                p_email, 
+                p_phone_number, 
+                p_job_id, 
+                p_salary, 
+                p_manager_id, 
+                p_department_id,
+                TO_CHAR(SYSDATE, 'DD/MM/YYYY'));
+                
+            COMMIT;
+                
+            -- Obtener el empleado creado
+            SELECT * 
+            INTO p_empleado
+            FROM employees
+            WHERE employee_id = v_consecutivo;
+            
+            DBMS_OUTPUT.PUT_LINE('Empleado creado exitosamente: ' || p_empleado.first_name);
+            
+        END IF;    
+        
+    EXCEPTION
+        WHEN OTHERS THEN 
+            DBMS_OUTPUT.PUT_LINE('Error ' || SQLERRM);
+            ROLLBACK;
+            RAISE;
+            
+    END pr_crear_empleado;
+    
+
+END pkg_gestion_empleados;
+/
+
+-- ----------------------------------------
+--         🧪 PROBAR EL PACKAGE
+-- -----------------------------------------
+
+DECLARE
+    v_empleado  employees%ROWTYPE;
+    v_existe    VARCHAR2(1);  
+
+BEGIN
+    
+    --Probar la función
+    v_existe := pkg_gestion_empleados.fn_existe_empleado('');
+    DBMS_OUTPUT.PUT_LINE('¿Existe empleado? ' || v_existe);
+
+    -- Probar el procedimiento
+    pkg_gestion_empleados.pr_crear_empleado(
+        p_first_name        => 'Maria',
+        p_last_name         => 'Gonzalez',
+        p_email             => 'Maria@empresa.com',
+        p_phone_number      => '5904245567',
+        p_job_id            => 'ST_MAN',
+        p_salary            => 6000,
+        p_manager_id        => 100,
+        p_department_id     => 50,
+        p_empleado          => v_empleado
+    );
+    
+     DBMS_OUTPUT.PUT_LINE('Empleado creado: ' || v_empleado.employee_id);
+END;
+/
+
+/** ----------------------------------------
+||      SOBRECARGA DE PROCEDIMINETOS
+|| -----------------------------------------
+|| DESCRIPCIÓN:
+|| La sobrecarga de procedimientos (Procedure Overloading) en PL/SQL es la capacidad 
+|| de definir múltiples procedimientos o funciones con el mismo nombre dentro del mismo ámbito 
+|| (casi siempre, dentro de un paquete), siempre y cuando sus listas de parámetros sean diferentes.
+||
+|| ## Criterios de Sobrecarga ##
+|| Para que un subprograma pueda sobrecargarse, el compilador de PL/SQL debe ser capaz 
+|| de distinguirlo de todos los demás con el mismo nombre. La distinción se basa en la firma del subprograma, que incluye:
+||
+|| 1. Número de parámetros.
+|| 2. Tipo de dato de los parámetros (ej., NUMBER vs. VARCHAR2).
+|| 3. Orden de los parámetros si sus tipos son distintos.
+||
+|| ## Ejemplo de Sobrecarga en un Paquete ##
+|| Un paquete de utilidades podría tener varias funciones para calcular un área, 
+|| todas llamadas calcular_area, pero adaptadas a diferentes formas geométricas:
 */
+
+-- PACKAGE
+CREATE OR REPLACE PACKAGE pk_geometria AS
+
+    -- Sobrecarga 1: Área de un cuadrado o rectángulo (Largo y Ancho)
+    FUNCTION calcular_area(
+        p_largo IN NUMBER,
+        p_ancho IN NUMBER
+    ) RETURN NUMBER;
+    
+    -- Sobrecarga 2: Área de un círculo (Solo Radio)
+    FUNCTION calcular_area(
+        p_radio IN NUMBER
+    ) RETURN NUMBER;
+END pk_geometria;
+/
+
+-- PACKAGE BODY
+CREATE OR REPLACE PACKAGE BODY pk_geometria AS
+
+    -- Constante de Pi (necesaria para el círculo)
+    PI CONSTANT NUMBER := 3.14159265359;
+    
+    -- 1. SOBRECARGA: Área de un Rectángulo/Cuadrado (Largo y Ancho)
+    -- Fórmula: Largo * Ancho
+    FUNCTION calcular_area(
+        p_largo IN NUMBER,
+        p_ancho IN NUMBER
+    ) RETURN NUMBER
+    AS 
+    BEGIN
+        -- Validación básica
+        IF p_largo IS NULL OR p_ancho IS NULL THEN
+            RETURN NULL;
+        END IF;
+
+        RETURN p_largo * p_ancho;
+        
+    END calcular_area;
+    
+    ---
+    
+    -- 2. SOBRECARGA: Área de un Círculo (Radio)
+    -- Fórmula: Pi * Radio^2
+    FUNCTION calcular_area(
+        p_radio IN NUMBER
+    ) RETURN NUMBER
+    AS 
+    BEGIN
+        IF p_radio IS NULL THEN
+            RETURN NULL;
+        END IF;
+        
+        -- Utilizando la constante PI
+        RETURN PI * (p_radio * p_radio);
+        
+    END calcular_area;
+    
+END pk_geometria;
+/
+
+-- USO
+DECLARE
+    v_alto_rectangulo   NUMBER  := 5;
+    v_ancho_rectangulo  NUMBER  := 10;
+    v_area_rectangulo   NUMBER  := 0;
+    
+    v_radio             NUMBER  := 3;
+    v_area_circulo      NUMBER  := 0;
+    
+BEGIN
+    -- 1. Llama a la función del Rectángulo/Cuadrado (NUMBER, NUMBER)
+    v_area_rectangulo := pk_geometria.calcular_area(
+        TO_NUMBER(v_alto_rectangulo),
+         TO_NUMBER(v_ancho_rectangulo));
+    DBMS_OUTPUT.PUT_LINE('Area del Rectángulo ('|| v_alto_rectangulo ||'x'|| v_ancho_rectangulo ||'): ' || v_area_rectangulo);
+
+    -- 2. Llama a la función del Círculo (NUMBER)
+    v_area_circulo := pk_geometria.calcular_area(v_radio);
+    DBMS_OUTPUT.PUT_LINE('Area del Círculo (Radio ' || v_radio || '): ' || v_area_circulo);
+END;
+/
+
+/** ----------------------------------------
+||      PAQUETES PREDEFINIDOS EN ORACLE
+|| -----------------------------------------
+|| DESCRIPCIÓN:
+|| Oracle Database incluye una extensa colección de paquetes predefinidos (o paquetes incorporados) 
+|| que proporcionan una interfaz PL/SQL para acceder a la funcionalidad del sistema y realizar tareas 
+|| de administración de bases de datos, desarrollo y debugging.
+||
+|| Estos paquetes actúan como librerías, permitiendo a los desarrolladores y administradores 
+|| interactuar con el kernel de la base de datos sin escribir SQL complejo.
+||
+|| === PAQUETES ESENCIALES PARA DESARROLLO DE CONSOLA ===
+|| Estos paquetes son cruciales para el desarrollo diario, la salida de mensajes y el manejo básico de datos.
+||
+|| Paquete	  |     Propósito Principal	 |   Función/Uso Común
+|| ___________|__________________________|___________________________________________________________________
+|| DBMS_OUTPUT|	    Depuración y 	     |  Muestra información en la consola PL/SQL (PUT_LINE). 
+||            |     mensajería.          |  Requiere SET SERVEROUTPUT ON.
+||            |                          |
+|| UTL_FILE	  |     Entrada/Salida 	     |  Permite leer y escribir archivos del sistema operativo en el 
+||            |     de archivos.         |  servidor. Muy utilizado para generación de reportes y carga de datos          
+||            |                          |
+|| DBMS_SQL	  |     SQL dinámico 	     |  Permite cosntruir y ejecutar sentencias SQL donde la estructura 
+||            |     avanzado.            |  (el SELECT o WHERE) no se conoce hasta el tiempo de ejecución.
+||            |                          |
+|| DBMS_LOB	  |     Manejo de tipos de 	 |  Proporciona procedimientos y funciones para manipular datos grandes 
+||            |     datos LOB.           |  (como imágenes, documentos, etc.) almacenados en columnas BLOB, CLOB, o BFILE.
+||____________|__________________________|____________________________________________________________________
+||
+||  === PAQUETES PARA TAREAS DE ADMINISTRACIÓN Y SISTEMAS ===
+||  Estos paquetes son utilizados frecuentemente por los administradores de bases de datos (DBAs) o para tareas de mantenimiento y seguridad.
+||
+|| Paquete         |   Propósito Principal	  |   Función/Uso Común
+|| ________________|__________________________|___________________________________________________________________
+|| DBMS_SCHEDULER  |   Programación           |   Reemplazo moderno de DBMS_JOB. Permite crear, 
+||                 |   de trabajos (Jobs).    |   gestionar y ejecutar tareas planificadas (jobs) dentro de la base de datos (ej., respaldos nocturnos).
+||                 |                          |
+|| DBMS_STATS      |   Gestión de             |   Recopila, modifica, restaura y elimina estadísticas sobre objetos de la base de datos para asegurar 
+||                 |   estadísticas del       |   un rendimiento óptimo de las consultas.
+||                 |   optimizador.           |
+||                 |                          |
+|| DBMS_METADATA   |  Extracción de DDL       |  Permite obtener las sentencias CREATE (DDL) de cualquier objeto de la base de datos 
+||                 | (Código).                |  (tablas, índices, procedimientos, etc.).
+||                 |                          |
+||                 |                          |
+|| DBMS_RANDOM     | Generación de números    |  Útil para pruebas, generación de datos de muestra o claves aleatorias.
+||                 | aleatorios.              |
+|| ________________|__________________________|____________________________________________________________________
+*/
+
+
+
+
+
+
