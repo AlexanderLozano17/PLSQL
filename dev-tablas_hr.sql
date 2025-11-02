@@ -173,6 +173,20 @@ CREATE TABLE job_history
     , CONSTRAINT    jhist_date_interval  
                        CHECK (end_date > start_date)  
     ) ;
+    
+CREATE TABLE audit_log (
+    log_id          NUMBER GENERATED ALWAYS AS IDENTITY, -- Clave primaria autoincremental
+    user_name       VARCHAR2(100) NOT NULL,             -- Usuario que realizó la acción
+    action_type     VARCHAR2(50) NOT NULL,              -- Tipo de acción (e.g., 'INSERT', 'UPDATE', 'DELETE')
+    table_name      VARCHAR2(100),                      -- Tabla afectada (e.g., 'EMPLOYEES', 'REGIONS')
+    action_time     TIMESTAMP WITH LOCAL TIME ZONE NOT NULL, -- Momento exacto de la acción
+    old_value       CLOB,                               -- Valor anterior (para auditoría detallada)
+    new_value       CLOB,                               -- Nuevo valor (para auditoría detallada)
+    transaction_id  VARCHAR2(32),                       -- Identificador de la transacción (opcional)
+    
+    -- Restricción de Clave Primaria
+    CONSTRAINT pk_audit_log PRIMARY KEY (log_id)
+);
 
 -- EMP_DETAILS_VIEW joins the employees, jobs, departments, jobs, countries, and locations table to provide details about employees.
 CREATE OR REPLACE VIEW emp_details_view  

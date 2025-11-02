@@ -2268,7 +2268,7 @@ END;
 || Estos paquetes son cruciales para el desarrollo diario, la salida de mensajes y el manejo básico de datos.
 ||
 || Paquete	  |     Propósito Principal	 |   Función/Uso Común
-|| ___________|__________________________|___________________________________________________________________
+|| ___________|__________________________|________________________________________________________________________
 || DBMS_OUTPUT|	    Depuración y 	     |  Muestra información en la consola PL/SQL (PUT_LINE). 
 ||            |     mensajería.          |  Requiere SET SERVEROUTPUT ON.
 ||            |                          |
@@ -2280,13 +2280,68 @@ END;
 ||            |                          |
 || DBMS_LOB	  |     Manejo de tipos de 	 |  Proporciona procedimientos y funciones para manipular datos grandes 
 ||            |     datos LOB.           |  (como imágenes, documentos, etc.) almacenados en columnas BLOB, CLOB, o BFILE.
-||____________|__________________________|____________________________________________________________________
-||
+||____________|__________________________|_________________________________________________________________________
+*/
+-- DBMS_OUTPUT (Depuración y Mensajería)
+BEGIN
+    -- Muestra el valor de una variable o un mensaje de estado
+    DBMS_OUTPUT.PUT_LINE('--- INICIO DE PROCESO ---');
+    DBMS_OUTPUT.PUT_LINE('La fecha actual es: ' || TO_CHAR(SYSDATE, 'YYYY-MM-DD'));
+END;
+--
+--
+-- UTL_FILE (Entrada/Salida de Archivos)
+-- -- DDL Requerido (Ejecutar por un DBA): CREATE DIRECTORY data_dir AS '/ruta/del/servidor/';
+DECLARE
+    v_file_handle UTL_FILE.FILE_TYPE;
+BEGIN
+    -- Abrir el archivo en modo escritura ('w') en el directorio lógico 'DATA_DIR'
+    v_file_handle := UTL_FILE.FOPEN('DATA_DIR', 'log_error.txt', 'w');
+    --
+    -- Escribir una línea de texto
+    UTL_FILE.PUT_LINE(v_file_handle, 'ERROR [2025-10-31]: Fallo en el procedimiento de nómina.');
+    --
+    -- Cerrar el archivo
+    UTL_FILE.FCLOSE(v_file_handle);
+EXCEPTION
+    WHEN UTL_FILE.INVALID_PATH THEN
+        DBMS_OUTPUT.PUT_LINE('Error: Ruta de directorio no válida.');
+END;
+--
+--
+-- DBMS_SQL (SQL Dinámico Avanzado)
+DECLARE
+    v_cursor_id    INTEGER       := DBMS_SQL.OPEN_CURSOR;
+    v_sentencia    VARCHAR2(200) := 'SELECT COUNT(*) FROM regions WHERE region_id = :id_param';
+    v_resultado    NUMBER;
+    v_dummy        INTEGER;   
+BEGIN
+    -- 1. Parsear la sentencia con un parámetro de enlace
+    DBMS_SQL.PARSE(v_cursor_id, v_sentencia, DBMS_SQL.NATIVE); 
+    --
+    -- 2. Enlazar el valor al parámetro
+    DBMS_SQL.BIND_VARIABLE(v_cursor_id, ':id_param', 3);
+    --
+    -- 3. Ejecutar la sentencia
+    v_dummy := DBMS_SQL.EXECUTE(v_cursor_id);
+    --
+    -- 4. Recuperar el resultado
+    DBMS_SQL.DEFINE_COLUMN(v_cursor_id, 1, v_resultado);
+   -- 
+    if DBMS_SQL.FETCH_ROWS(v_cursor_id) > 0 then
+        DBMS_SQL.COLUMN_VALUE(v_cursor_id, 1, v_resultado);
+    end if;
+    --
+    DBMS_OUTPUT.PUT_LINE('Conteo de regiones: ' || v_resultado);
+    DBMS_SQL.CLOSE_CURSOR(v_cursor_id);
+END;
+--
+/**
 ||  === PAQUETES PARA TAREAS DE ADMINISTRACIÓN Y SISTEMAS ===
 ||  Estos paquetes son utilizados frecuentemente por los administradores de bases de datos (DBAs) o para tareas de mantenimiento y seguridad.
 ||
 || Paquete         |   Propósito Principal	  |   Función/Uso Común
-|| ________________|__________________________|___________________________________________________________________
+|| ________________|__________________________|____________________________________________________________________
 || DBMS_SCHEDULER  |   Programación           |   Reemplazo moderno de DBMS_JOB. Permite crear, 
 ||                 |   de trabajos (Jobs).    |   gestionar y ejecutar tareas planificadas (jobs) dentro de la base de datos (ej., respaldos nocturnos).
 ||                 |                          |
@@ -2301,10 +2356,686 @@ END;
 || DBMS_RANDOM     | Generación de números    |  Útil para pruebas, generación de datos de muestra o claves aleatorias.
 ||                 | aleatorios.              |
 || ________________|__________________________|____________________________________________________________________
+||
 */
-
-
-
-
-
-
+-- DBMS_SCHEDULER (Programación de Trabajos)
+BEGIN
+    -- Crear un job que llama al procedimiento 'pr_limpiar_logs' cada 24 horas
+    DBMS_SCHEDULER.CREATE_JOB (
+       job_name        => 'JOB_LIMPIEZA_DIARIA_LOGS',
+       job_type        => 'STORED_PROCEDURE',
+       job_action      => 'PR_LIMPIAR_LOGS', -- Debe existir el procedimiento
+       start_date      => SYSDATE,
+       repeat_interval => 'FREQ=DAILY; INTERVAL=1',
+       enabled         => TRUE,
+       comments        => 'Limpia la tabla de logs diariamente.'
+    );
+END;
+/
+--
+--
+-- DBMS_STATS (Gestión de Estadísticas del Optimizador)
+BEGIN
+    -- Recopila estadísticas para la tabla EMPLOYEES
+    DBMS_STATS.GATHER_TABLE_STATS (
+        ownname => 'HR',
+        tabname => 'EMPLOYEES',
+        estimate_percent => DBMS_STATS.AUTO_SAMPLE_SIZE, -- Muestreo automático
+        degree => DBMS_STATS.DEFAULT_DEGREE
+    );
+    DBMS_OUTPUT.PUT_LINE('Estadísticas recopiladas para EMPLOYEES.');
+END;
+/
+--
+--
+-- DBMS_RANDOM (Generación de Números Aleatorios)
+DECLARE
+    v_numero_aleatorio NUMBER;
+BEGIN
+    -- Generar un número entero aleatorio entre 100 y 999
+    v_numero_aleatorio := DBMS_RANDOM.VALUE(100, 999); 
+    
+    DBMS_OUTPUT.PUT_LINE('ID aleatorio generado: ' || TRUNC(v_numero_aleatorio));
+END;
+/
+--
+/**
+||  === PAQUETES PARA CONECTIVIDAD Y WEB
+||
+|| Paquete   |  Propósito Principal	    |   Función/Uso Común
+|| __________|__________________________|__________________________________________________________________________
+|| UTL_HTTP  |  Solicitudes HTTP (Web). |   Permite a PL/SQL enviar solicitudes HTTP (GET, POST) y recibir respuestas desde servidores web, 
+||           |                          |   facilitando la integración con servicios externos (APIs REST).
+||           |                          |
+|| UTL_SMTP  |  Envío de correo         |   Permite que la base de datos envíe correos electrónicos a través de un servidor SMTP.
+||           |  electrónico.            |
+||___________|__________________________|__________________________________________________________________________
+*/
+-- UTL_HTTP (Solicitudes HTTP)
+-- DDL Requerido (Ejecutar por DBA): ACL (Access Control List) para permitir la conexión saliente
+DECLARE
+    v_response_clob CLOB;
+BEGIN
+    -- Hacer una solicitud GET simple
+    v_response_clob := UTL_HTTP.REQUEST('http://www.example.com'); 
+    --
+    -- Mostrar las primeras 500 letras de la respuesta (HTML)
+    DBMS_OUTPUT.PUT_LINE('Respuesta del servidor: ' || DBMS_LOB.SUBSTR(v_response_clob, 500, 1));
+END;
+/
+--
+--
+-- UTL_SMTP (Envío de Correo Electrónico)
+-- DDL Requerido: Configuración del servidor SMTP y ACL.
+DECLARE
+    v_connection UTL_SMTP.CONNECTION;
+BEGIN
+    -- 1. Abrir la conexión al servidor SMTP (reemplazar con datos reales)
+    v_connection := UTL_SMTP.OPEN_CONNECTION('smtp.tuservidor.com', 25);
+    UTL_SMTP.HELO(v_connection, 'localhost');
+    --
+    -- 2. Configurar emisor y receptor
+    UTL_SMTP.MAIL(v_connection, 'sistema@oracle.com');
+    UTL_SMTP.RCPT(v_connection, 'usuario@dominio.com');
+    --
+    -- 3. Enviar el contenido
+    UTL_SMTP.DATA(v_connection, 
+        'Subject: Reporte Diario' || UTL_TCP.CRLF || 
+        'Contenido: El proceso diario ha finalizado con éxito.');
+    --   
+    -- 4. Cerrar la conexión
+    UTL_SMTP.QUIT(v_connection);
+    --
+EXCEPTION
+    WHEN OTHERS THEN
+        DBMS_OUTPUT.PUT_LINE('Fallo el envío de correo: ' || SQLERRM);
+END;
+/
+/**
+||  === PAUQETES PARA SEGURIDAD Y SESIÓN ===
+||
+|| Paquete         |   Propósito Principal	  |   Función/Uso Común
+|| ________________|__________________________|____________________________________________________________________
+|| DBMS_SESSION    |   Gestión de la sesión   |   Permite modificar parámetros de la sesión actual (ej., 
+||                 |   actual.                |   establecer roles, cambiar el NLS_DATE_FORMAT).
+||                 |                          |
+|| DBMS_CRYPTO     |   Cifrado y              |   Proporciona algoritmos de cifrado, hashing y firma de datos.
+||                 |   descifrado.            | 
+||_________________|__________________________|____________________________________________________________________
+*/
+-- BMS_SESSION (Gestión de la Sesión Actual)
+BEGIN
+    -- Cambiar el formato de fecha para la sesión actual
+    DBMS_SESSION.SET_NLS('NLS_DATE_FORMAT', '''DD-MON-RR''');
+    
+    DBMS_OUTPUT.PUT_LINE('Fecha actual con nuevo formato: ' || SYSDATE);
+    
+    -- Restablecer el formato predeterminado
+    -- DBMS_SESSION.SET_NLS('NLS_DATE_FORMAT', '''DD/MM/RR'''); 
+END;
+/
+--
+--
+-- DBMS_CRYPTO (Cifrado y Descifrado)
+DECLARE
+    v_entrada     VARCHAR2(100) := 'MiContrasenaSecreta';
+    v_clave       RAW(128) := UTL_I18N.STRING_TO_RAW('clave_secreta', 'AL32UTF8');
+    v_cifrado     RAW(2048);
+    v_descifrado  VARCHAR2(100);
+    --
+    -- Algoritmo: AES de 256 bits, modo CBC, y PKCS#5 padding
+    v_modo_cifrado CONSTANT INTEGER := DBMS_CRYPTO.ENCRYPT_AES256 + DBMS_CRYPTO.CHAIN_CBC + DBMS_CRYPTO.PAD_PKCS5;
+BEGIN
+    -- Cifrar el valor
+    v_cifrado := DBMS_CRYPTO.ENCRYPT(
+        src => UTL_I18N.STRING_TO_RAW(v_entrada, 'AL32UTF8'),
+        typ => v_modo_cifrado,
+        key => v_clave
+    );
+    --
+    DBMS_OUTPUT.PUT_LINE('Cadena cifrada (RAW): ' || v_cifrado);
+    --
+    -- Descifrar el valor
+    v_descifrado := UTL_I18N.RAW_TO_STRING(
+        DBMS_CRYPTO.DECRYPT(
+            src => v_cifrado,
+            typ => v_modo_cifrado,
+            key => v_clave
+        ), 'AL32UTF8'
+    );
+    --
+    DBMS_OUTPUT.PUT_LINE('Cadena descifrada: ' || v_descifrado);
+END;
+/
+--
+/** ----------------------------------------
+||  TIPO Y EVENTOS DE LOS TRIGGER EN PLSQL
+|| -----------------------------------------
+|| DESCRIPCIÓN:
+|| Los Triggers (Disparadores) en PL/SQL son procedimientos almacenados que se ejecutan de forma automática e implícita 
+|| en la base de datos cuando ocurre un evento específico.
+|| 
+|| Se clasifican según cuándo se ejecutan (Tipo) y qué evento los dispara (Evento).
+||
+|| 1. Tipos de Triggers (Nivel de Ejecución)
+|| Los Triggers se clasifican según el nivel de granularidad o cuántas veces se disparan por cada sentencia SQL:
+*/
+-- -----------------------------------------
+-- A. Trigger a Nivel de Sentencia (Statement Level)
+-- * Definición: El trigger se ejecuta una sola vez por la sentencia SQL, independientemente de cuántas filas afecte.
+-- * Uso: Ideal para tareas administrativas o de registro que no dependen de los valores individuales de las filas. No tiene acceso a los pseudoregistros :OLD ni :NEW.
+-- * Ejemplo: Registrar quién y cuándo se ejecutó un DELETE en la tabla EMPLOYEES.
+-- -----------------------------------------
+CREATE OR REPLACE TRIGGER trg_log_delete_statement
+-- Evento: Después de cualquier DELETE
+AFTER DELETE ON employees
+BEGIN
+    -- Se dispara solo una vez
+    insert into audit_log (user_name, action_type, table_name, action_time)
+    values (USER, 'DELETE', 'EMPLOYEES', SYSDATE);
+END;
+/
+--PROBAR TRIGGER
+BEGIN
+   delete from employees
+   where employee_id = 106;
+   COMMIT;
+END;
+/
+--
+-- -----------------------------------------
+-- B. Trigger a Nivel de Fila (FOR EACH ROW)
+-- * Definición: El trigger se ejecuta una vez por cada fila afectada por la sentencia SQL.
+-- * Uso: Crucial para aplicar lógica de negocio, validaciones y auditorías de datos fila por fila. Permite acceder a los valores antiguos y nuevos.
+-- * Ejemplo: Auditar los cambios de salario en la tabla EMPLOYEES.
+-- -----------------------------------------
+CREATE OR REPLACE TRIGGER trg_auditoria_salario
+-- Evento: Antes de actualizar la columna salary
+BEFORE UPDATE OF salary ON employees 
+-- Tipo: A nivel de Fila
+FOR EACH ROW
+BEGIN
+    -- Accede al valor antiguo (:OLD) y al nuevo (:NEW)
+    if :NEW.salary < :OLD.salary * 1.05 then 
+        -- Si el nuevo salario es menor al 5% del anterior, forzar un mensaje de error
+        RAISE_APPLICATION_ERROR(-20005, 'El aumento de salario debe ser al menos del 5%.');
+    end if;
+END;
+/
+--PROBAR TRIGGER
+BEGIN
+   update employees
+   set salary = 9000
+   where employee_id = 110;
+END;
+/
+--
+-- -----------------------------------------
+-- 2. Eventos de los Triggers (Clasificación)
+-- El evento define la acción que dispara la ejecución del trigger. 
+-- -----------------------------------------
+-- I. Eventos DML (Data Manipulation Language)
+-- Se disparan por cambios en los datos de una tabla. Se debe especificar el momento de ejecución (BEFORE o AFTER).
+-- 
+-- Evento  |   Descripción	     |  Ejemplo
+-- ________|_____________________|____________________________________________________________________
+-- INSERT  |   Al agregar nuevas |  Asignar automáticamente un ID secuencial antes de la inserción.
+--         |   filas.            |   
+--         |                     |
+-- UPDATE  |   Al modificar filas|  Registrar el valor anterior de una columna en un historial.
+--         |   existentes.       |   
+--         |                     |
+-- DELETE  |   Al eliminar filas |  Borrar registros relacionados en una tabla hija.
+--_________|_____________________|____________________________________________________________________
+-- Ejemplo DML (INSERT): Asignar ID Automático
+CREATE OR REPLACE TRIGGER tr_auto_id_regions
+-- Antes de insertar en la tabla regions
+BEFORE INSERT ON regions
+FOR EACH ROW
+BEGIN
+    -- Si el ID no se proporciona, asigna el siguiente valor de la secuencia
+    if :NEW.region_id IS NULL then
+        select regions_seq.NEXTVAL into :NEW.region_id FROM dual;
+    end if;
+END;
+/ 
+--
+-- -----------------------------------------
+-- II. Eventos DDL (Data Definition Language)
+-- Se disparan por cambios en la estructura de la base de datos (Ej. CREATE, ALTER, DROP). Se definen a nivel de esquema (ON SCHEMA) o a nivel de base de datos (ON DATABASE).
+-- Ejemplo DDL (CREATE): Evitar la creación de tablas por un usuario
+-- -----------------------------------------
+CREATE OR REPLACE TRIGGER trg_evitar_creacion_tablas
+-- Antes de que se cree cualquier objeto DDL en este esquema
+BEFORE CREATE ON SCHEMA
+BEGIN
+    -- Si el usuario no es 'SYSADMIN', lanzar un error
+    if USER != 'SYSADMIN' then
+        RAISE_APPLICATION_ERROR(-20006, 'No tienes permiso para crear objetos DDL en este esquema.');
+    end if;
+END;
+/
+--
+-- -----------------------------------------
+-- III. Eventos de Base de Datos y Sistema
+-- Se disparan por eventos relacionados con la gestión de sesiones o la instancia de la base de datos.
+-- -----------------------------------------
+-- Evento    |  Descripción
+-- __________|______________________________
+-- LOGON     |  Cuando un usuario se conecta.
+-- LOGOFF    |  Cuando un usuario se desconecta.
+-- STARTUP   |  Cuando la base de datos se inicia.
+-- SHUTDOWN  |  Cuando la base de datos se apaga.
+-- __________|______________________________
+-- Ejemplo de Sistema (LOGON): Limitar el acceso por horario
+CREATE OR REPLACE TRIGGER trg_limite_horario_login
+-- Después de que un usuario se conecte a este esquema
+AFTER LOGON ON SCHEMA
+BEGIN
+    -- Si la hora actual está fuera del horario laboral (ej. 8 AM a 5 PM)
+    if TO_CHAR(SYSDATE, 'HH24') NOT BETWEEN '08' AND '17' then
+        -- Desconectar al usuario inmediatamente
+        RAISE_APPLICATION_ERROR(-20007, 'Acceso restringido fuera del horario laboral (8:00 AM - 5:00 PM).');
+    end if;
+END;
+/
+--
+-- ----------------------------------------
+--  HABILITAR Y DESHABILITAR UN TRIGGER
+-- -----------------------------------------
+ALTER TRIGGER trg_evitar_creacion_tablas ENABLE;
+ALTER TRIGGER trg_evitar_creacion_tablas DISABLE;
+-- ----------------------------------------
+--  ELIMINAR UN TRIGGER
+-- -----------------------------------------
+DROP TRIGGER trg_log_delete_statement;
+DROP TRIGGER trg_evitar_creacion_tablas;
+DROP TRIGGER trg_auditoria_salario;
+DROP TRIGGER tr_auto_id_regions;
+--
+/** ----------------------------------------
+||  RANGO DE ERRORES EN ORACLE
+|| -----------------------------------------
+|| ____________________________________________________________________________________________________________
+|| La distinción clave es quién genera el error: la Base de Datos (Oracle) o la Aplicación (Tú).
+|| 
+|| 1. Errores de la Base de Datos (Negativos y Positivos)
+|| Estos son los errores estándar que lanza el motor de Oracle. Son siempre positivos en los manuales, 
+|| pero se representan como negativos en el código PL/SQL.
+|| 
+||_____________________________________________________________________________________________________________
+|| Rango de Error       |  Descripción         |  Ejemplo                     | Uso en Código
+||______________________|______________________|______________________________|________________________________
+|| -00001 a -00999      | Errores de sintaxis  | ORA-00904:                   | WHEN OTHERS THEN 
+||                      | SQL.                 | Identificador no             | DBMS_OUTPUT.PUT_LINE(SQLERRM);
+||                      |                      | válido (ya lo viste antes).  |
+||                      |                      |                              | 
+|| -01000 a -01999      | Errores de DML,      | ORA-01400: No se             | WHEN NO_DATA_FOUND THEN ...
+||                      | integridad de        | puede insertar               |
+||                      | datos y conexión     | NULL en columna requerida.   |
+||                      |                      |                              | 
+|| -02000 a -02999      | Errores de recursos  | ORA-02000:                   |
+||                      | del sistema o de la  | Palabra clave o              |
+||                      | sesión.              | identificador inválido.      | Se maneja con WHEN OTHERS.
+||______________________|______________________|______________________________|________________________________
+||
+||
+|| 2. Errores Personalizados de Aplicación (Negativos, Tu Rango)
+|| Este es el rango que tú, como desarrollador, puedes utilizar para lanzar tus propias excepciones con mensajes descriptivos. Se generan usando la función RAISE_APPLICATION_ERROR.
+||
+|| Rango de Error       |  Descripción         |  Ejemplo                     
+||______________________|______________________|_______________________________________________________________
+|| -20000 a -20999      | Errores definidos    | RAISE_APPLICATION_ERROR
+||                      | por el usuario.      | 
+||______________________|______________________|_______________________________________________________________
+*/
+--
+--
+--
+/** ----------------------------------------
+||  CONTROLAR DE TIPOS DE EVEN EN LOS TRIGGER
+|| -----------------------------------------
+|| DESCRIPCIÓN:
+|| Para controlar la ejecución de código PL/SQL basándose en tipos de eventos dentro de la base de datos, utilizamos principalmente 
+|| Triggers (Disparadores) con las cláusulas WHEN y la detección explícita de eventos dentro de la lógica del trigger.
+||
+|| Existen dos mecanismos principales para lograr un control fino sobre los eventos:
+||
+|| 1. Controlar Múltiples Eventos DML en un Solo Trigger
+|| Si un trigger se dispara por múltiples eventos DML (INSERT, UPDATE, DELETE), puedes controlar qué lógica se ejecuta usando
+|| funciones booleanas que Oracle proporciona dentro del trigger (IF INSERTING, IF UPDATING, IF DELETING).
+||
+|| Ejemplo: Un Trigger para Crear, Actualizar y Eliminar
+|| Este trigger a nivel de fila registra la acción específica realizada sobre la tabla REGIONS en una tabla de auditoría.
+*/
+--
+CREATE OR REPLACE TRIGGER trg_regions_audit_log
+-- Múltiples eventos
+AFTER INSERT OR UPDATE OR DELETE ON regions
+FOR EACH ROW
+BEGIN
+    if INSERTING then
+        -- Controlar el evento de Inserción        
+        :NEW.region_name := UPPER(NEW.region_name);
+        insert into audit_log (user_name, action_type, table_name, action_time)
+        values (USER, 'INSERT', 'REGIONS', SYSDATE);
+        --
+    elsif UPDATING then
+        -- Controlar el evento de Actualización        
+        :NEW.region_name := UPPER(NEW.region_name);
+        insert into audit_log (user_name, action_type, table_name, action_time)
+        values (USER, 'UPDATE', 'REGIONS', SYSDATE);
+        --
+    elsif DELETING then
+        -- Controlar el evento de Borrado
+        insert into audit_log (user_name, action_type, table_name, action_time)
+        values (USER, 'DELETE', 'REGIONS', SYSDATE);
+        --
+    end if;
+END;
+/
+-- TEST TRIGGER
+BEGIN
+    insert into regions (region_id, region_name) 
+    values (101, 'Sur America2');
+    COMMIT;
+    --
+    update regions
+    set region_name = 'Sur America3'
+    where region_id = 101;
+    COMMIT;
+    --
+    delete from regions
+    where region_id = 101;
+    COMMIT;
+END;
+/
+--
+-- ----------------------------------------
+-- 2. Controlar Eventos DML para Columnas Específicas
+--
+-- Puedes refinar aún más el control en los eventos de UPDATE para que la lógica se ejecute solo si una columna en particular fue afectada.
+-- 
+-- Ejemplo: Controlar por Columna 
+-- Se utiliza la cláusula OF column_name en la declaración y la función UPDATING ('column_name') dentro del cuerpo.
+-- ----------------------------------------
+--
+CREATE OR REPLACE TRIGGER trg_salario_log
+AFTER UPDATE OF salary, commission_pct ON employees
+FOR EACH ROW
+BEGIN
+    -- Ejecuta la lógica solo si la columna SALARY realmente fue modificada en esta sentencia
+    if UPDATING('salary') then
+        -- Registra el cambio
+        insert into audit_log (user_name, action_type, table_name, action_time)
+        values (USER, 'UPDATE DE salary para el empleado ' || :OLD.employee_id, 'REGIONS', SYSDATE);
+        DBMS_OUTPUT.PUT_LINE('Se detectó un cambio de salario para el empleado ' || :OLD.employee_id);
+    end if;
+    --
+    if UPDATING('commission_pct') then
+        -- Registra el cambio
+        insert into audit_log (user_name, action_type, table_name, action_time)
+        values (USER, 'UPDATE DE commission_pct para el empleado ' || :OLD.employee_id, 'REGIONS', SYSDATE);
+        DBMS_OUTPUT.PUT_LINE('Se detectó un cambio de commission_pct para el empleado ' || :OLD.employee_id);
+    end if;
+END;
+/
+-- TEST TRIGGER
+BEGIN
+    update employees
+    set salary = 11000, commission_pct = 0.1
+    where region_id = 101;
+    where employee_id = 100;
+    COMMIT;
+END;
+/
+--
+-- ----------------------------------------
+-- 3. Cláusula Condicional WHEN
+--
+-- La cláusula WHEN permite establecer una condición previa que debe ser verdadera para que el trigger se ejecute. 
+-- Esto proporciona un control de eventos muy eficiente antes de que comience el bloque BEGIN.
+-- 
+-- Ejemplo: Ejecutar solo para Ciertos Valores
+-- ----------------------------------------
+--
+CREATE OR REPLACE TRIGGER trg_control_dept_90
+BEFORE INSERT OR UPDATE ON employees
+FOR EACH ROW
+-- Cláusula WHEN: el trigger solo se dispara si el departamento NO es 90
+WHEN (NEW.department_id != 90)
+BEGIN
+    DBMS_OUTPUT.PUT_LINE('Esta lógica solo se ejecuta para empleados de otros departamentos');
+    DBMS_OUTPUT.PUT_LINE('Los empleados del departamento 90 son ignorados por el trigger');
+END;
+/
+--
+/** ----------------------------------------
+||  COMPROBAR E ESTADO DE LOS TRIGGER
+|| -----------------------------------------
+|| DESCRIPCIÓN:
+|| Para comprobar el estado (habilitado o deshabilitado) de los triggers en Oracle, puedes consultar las vistas del diccionario de datos
+||
+|| 1. Comprobar el Estado de Todos los Triggers del Esquema Actual
+|| Usa la vista USER_TRIGGERS para ver el estado de los triggers que posees en tu esquema:
+*/
+BEGIN
+   for r_trigger in (
+        select 
+            trigger_name,
+            trigger_type,   -- AFTER, BEFORE
+            triggering_event, -- INSERT, UPDATE, DELETE
+            status          -- Muestra 'ENABLED' o 'DISABLED'
+        from user_triggers
+        order by trigger_name
+    )
+    loop
+        -- Usar r_trigger.column_name para acceder a los datos de cada fila
+        DBMS_OUTPUT.PUT_LINE('Trigger: ' || r_trigger.trigger_name || 
+                             ' | Tipo: ' || r_trigger.trigger_type || 
+                             ' | Evento: ' || r_trigger.triggering_event || 
+                             ' | Estado: ' || r_trigger.status);
+    end loop;
+END;
+/
+--
+-- ----------------------------------------
+-- 2. Comprobar el Estado de los Triggers en una Tabla Específica
+--
+-- Si quieres verificar solo los triggers asociados a una tabla, por ejemplo, EMPLOYEES:
+-- ----------------------------------------
+--
+    where region_id = 101;
+BEGIN
+   for r_trigger in (
+        select 
+            trigger_name,
+            status          -- Muestra 'ENABLED' o 'DISABLED'
+        from user_triggers
+        where table_name = 'EMPLOYEES'
+        order by trigger_name
+   )
+   loop
+        -- Usar r_trigger.column_name para acceder a los datos de cada fila
+        DBMS_OUTPUT.PUT_LINE('Trigger: ' || r_trigger.trigger_name ||  
+                             ' | Estado: ' || r_trigger.status);
+   end loop;
+END;
+    where region_id = 101;
+/
+--
+-- ----------------------------------------
+-- 3. Comprobar el Estado de Triggers en Toda la Base de Datos (Requiere Privilegios de DBA)
+--
+-- Si tienes privilegios de administrador, puedes usar la vista ALL_TRIGGERS o DBA_TRIGGERS para ver triggers en otros esquemas.
+-- ----------------------------------------
+--
+BEGIN
+   for r_trigger in (
+        select
+            owner,          -- Propietario del trigger
+            trigger_name,
+            table_name,
+            status
+        from
+            all_triggers
+        where
+            table_name = 'REGIONS' and owner = 'HR' -- Reemplaza con el nombre de esquema y tabla deseado
+   )
+   loop
+        -- Usar r_trigger.column_name para acceder a los datos de cada fila
+        DBMS_OUTPUT.PUT_LINE('Trigger: ' || r_trigger.owner ||
+                             ' | Nombre:.' || r_trigger.trigger_name || 
+                             ' | Tabla: ' || r_trigger.table_name ||
+                             ' | Estado: ' || r_trigger.status);
+   end loop;
+END;
+/
+--
+/** ----------------------------------------
+||  CONTROLAR DE TIPOS DE EVEN EN LOS TRIGGER
+|| -----------------------------------------
+|| DESCRIPCIÓN:
+|| Oracle PL/SQL soporta programación Orientada a Objetos (OO) a través de Tipos de Objeto de Esquema (Schema Object Types). 
+|| Esto permite modelar entidades del mundo real, definir estructuras de datos complejas y encapsular lógica (métodos) directamente en el esquema de la base de datos.
+||
+|| Conceptos Clave de OO en Oracle PL/SQL
+|| Los Tipos de Objeto de Esquema son los bloques de construcción para la orientación a objetos en Oracle y cumplen con los cuatro pilares principales de la OO:
+||
+|| 1. Encapsulamiento (Defining the Structure)
+|| Un Tipo de Objeto combina datos y la lógica (métodos) que opera sobre esos datos en una sola unidad.
+|| * Definición: Se crea usando CREATE TYPE. Contiene los atributos (datos) y la Especificación del Cuerpo (cabeceras de métodos).
+|| 
+|| Ejemplo: Para aplicar la OO, definiremos un objeto para representar un Empleado. Usaremos atributos de las 
+||          tablas de employees, departments y jobs para construir Tipos de Objeto relacionados.
+|| ----------------------------------------
+*/
+-- A. Tipo de Objeto: T_JOB (Estructura Simple)
+-- Representa la información del puesto de trabajo, tomada de la tabla JOBS.
+CREATE OR REPLACE TYPE T_JOB AS OBJECT (
+    job_id      VARCHAR2(10),
+    job_title   VARCHAR2(35),
+    min_salary  NUMBER(6),
+    max_salary  NUMBER(6)
+);
+/
+--
+-- B. Tipo de Objeto: T_DEPARTAMENTO (Estructura Simple)
+-- Representa la información del departamento, tomada de la tabla DEPARTMENTS.
+CREATE OR REPLACE TYPE T_DEPARTAMENTO AS OBJECT (
+    department_id   NUMBER(4),
+    department_name VARCHAR2(30),
+    manager_id      NUMBER(6),
+    location_id     NUMBER(4)
+);
+/
+--
+-- C. Tipo de Objeto: T_EMPLEADO (Objeto con Métodos)
+-- Este es el objeto principal. Utiliza los tipos T_JOB y T_DEPARTAMENTO como atributos, demostrando la composición de objetos. 
+-- Además, encapsulamos lógica de negocio (Métodos).
+CREATE OR REPLACE TYPE T_EMPLEADO AS OBJECT (
+    -- Atributos básicos de EMPLOYEES
+    employee_id     NUMBER(6),
+    first_name      VARCHAR2(20),
+    last_name       VARCHAR2(25),
+    salary          NUMBER(6),
+    --
+    -- Atributos que son otros objetos (Composición)
+    puesto      T_JOB,
+    ubicacaion  T_DEPARTAMENTO,
+    --
+    -- Constructor (Método que crea el objeto)
+    CONSTRUCTOR FUNCTION T_EMPLEADO(p_id NUMBER)
+        RETURN SELF AS RESULT,
+    --
+    -- Método que calcula el salario anual
+    MEMBER FUNCTION fn_salario_anual RETURN NUMBER,
+    --
+    -- Método que muestra los datos del empleado
+    MEMBER PROCEDURE pr_mostrar_info
+);
+/
+--
+-- 2. mplementación de Métodos y Lógica
+-- La lógica para los métodos declarados en la Especificación (fn_salario_anual, pr_mostrar_info y el CONSTRUCTOR) se define en el Cuerpo del Tipo.
+-- Cuerpo del Tipo de Objeto: T_EMPLEADO
+CREATE OR REPLACE TYPE BODY T_EMPLEADO AS
+    --
+    -- 2.1. CONSTRUCTOR
+    -- Inicializa un objeto T_EMPLEADO buscando los datos por ID
+    CONSTRUCTOR FUNCTION T_EMPLEADO(p_id NUMBER)
+        RETURN SELF AS RESULT
+    IS
+        -- Variables intermedias para la consulta y creación de objetos anidados
+        v_job_id        jobs.job_id%TYPE;
+        v_job_title     jobs.job_title%TYPE;
+        v_dept_id       departments.department_id%TYPE;
+        v_dept_name     departments.department_name%TYPE;
+    BEGIN
+        -- 1. Buscar todos los datos necesarios en una sola SELECT
+        -- Usamos SELF para referirnos a la instancia del objeto que se está creando
+        select 
+            e.employee_id, e.first_name, e.last_name, e.salary,
+            j.job_id, j.job_title,
+            d.department_id, d.department_name
+        into
+            SELF.employee_id, SELF.first_name, SELF.last_name, SELF.salary,
+            v_job_id, v_job_title,
+            v_dept_id, v_dept_name
+        from employees e
+        join job j on e.job_id = j.job_id
+        join departments d on e.department_id = d.department_id
+        where employee_id = p_id;
+        --
+        -- 2. Crear las instancias de objetos anidados usando PL/SQL (CORRECCIÓN CLAVE)
+        SELF.puesto := T_JOB(v_job_id, v_job_title);
+        SELF.ubicacion := T_DEPARTAMENTO(v_dept_id, v_dept_name);
+        --
+        return;
+    END T_EMPLEADO;
+    --
+    -- 2.2. MÉTODO: Cálculo del Salario Anual
+    MEMBER FUNCTION fn_salario_anual RETURN NUMBER
+    IS
+    BEGIN
+        -- La lógica usa el atributo de la instancia (SELF.salary)
+        return SELF.salary * 12;
+    END fn_salario_anual;
+    --
+    --- 2.3. MÉTODO: Mostrar Información
+    MEMBER PROCEDURE pr_mostrar_info
+    IS
+    BEGIN
+        DBMS_OUTPUT.PUT_LINE('------------------------------------');
+        DBMS_OUTPUT.PUT_LINE('ID Empleado: ' || SELF.employee_id);
+        DBMS_OUTPUT.PUT_LINE('Nombre: ' || SELF.first_name || ' ' || SELF.last_name);
+        DBMS_OUTPUT.PUT_LINE('Salario Mensual: ' || TO_CHAR(SELF.salary, '$99,999.00'));
+        --
+        -- Acceder a los atributos del objeto compuesto (puesto y ubicacion)
+        DBMS_OUTPUT.PUT_LINE('Puesto: ' || SELF.puesto.job_title);
+        DBMS_OUTPUT.PUT_LINE('Departamento: ' || SELF.ubicacion.department_name);
+        DBMS_OUTPUT.PUT_LINE('Salario Anual Calculado: ' || TO_CHAR(SELF.fn_salario_anual, '$999,999.00'));
+        DBMS_OUTPUT.PUT_LINE('------------------------------------');
+    END pr_mostrar_info;
+END;
+/
+-- 
+--3. Uso del Objeto en PL/SQL
+DECLARE
+    -- Declarar una variable cuyo tipo de dato es nuestro Tipo de Objeto
+    v_empleado T_EMPLEADO; 
+BEGIN
+    -- 1. Instanciar el objeto usando el Constructor
+    -- Asumimos que el empleado 100 existe
+    v_empleado := T_EMPLEADO(100); 
+    --
+    -- 2. Llamar al método del objeto (lógica encapsulada)
+    v_empleado.pr_mostrar_info();
+    --
+    -- 3. Acceder a los atributos directamente
+    DBMS_OUTPUT.PUT_LINE('Verificación rápida del puesto: ' || v_empleado.puesto.job_title);
+    --
+    -- 4. Llamar a la función
+    DBMS_OUTPUT.PUT_LINE('El salario anual por fuera es: ' || v_empleado.fn_salario_anual);
+END;
+/
