@@ -2893,7 +2893,7 @@ END;
 /
 --
 /** ----------------------------------------
-||  CONTROLAR DE TIPOS DE EVEN EN LOS TRIGGER
+||  ORIENTADO A OBJECTOS PLSQL
 || -----------------------------------------
 || DESCRIPCIÓN:
 || Oracle PL/SQL soporta programación Orientada a Objetos (OO) a través de Tipos de Objeto de Esquema (Schema Object Types). 
@@ -2915,19 +2915,65 @@ END;
 CREATE OR REPLACE TYPE T_JOB AS OBJECT (
     job_id      VARCHAR2(10),
     job_title   VARCHAR2(35),
-    min_salary  NUMBER(6),
-    max_salary  NUMBER(6)
+    --
+    -- Constructor (Método que crea el objeto)
+    -- Este constructor existe sin que lo escribas
+    -- Si definiste un constructor explícito para T_JOB, debes compilar el cuerpo
+    CONSTRUCTOR FUNCTION T_JOB (
+        p_job_id      VARCHAR2,
+        p_job_title   VARCHAR2
+    ) RETURN SELF AS RESULT
 );
 /
+--
+-- TYPE BODY T_JOB 
+-- Si definiste un constructor explícito para T_JOB, debes compilar el cuerpo:
+CREATE OR REPLACE TYPE BODY T_JOB AS
+    --
+    CONSTRUCTOR FUNCTION T_JOB (
+        p_job_id    VARCHAR2,
+        p_job_title VARCHAR2
+    ) RETURN SELF AS RESULT
+    IS
+    BEGIN
+        SELF.job_id     := p_job_id;
+        SELF.job_title  := p_job_title;
+        RETURN;
+    END T_JOB;
+END T_JOB;
+/
+--
 --
 -- B. Tipo de Objeto: T_DEPARTAMENTO (Estructura Simple)
 -- Representa la información del departamento, tomada de la tabla DEPARTMENTS.
 CREATE OR REPLACE TYPE T_DEPARTAMENTO AS OBJECT (
     department_id   NUMBER(4),
     department_name VARCHAR2(30),
-    manager_id      NUMBER(6),
-    location_id     NUMBER(4)
+    --
+    -- Constructor (Método que crea el objeto)
+    -- Este constructor existe sin que lo escribas
+    -- Si definiste un constructor explícito para T_DEPARTAMENTO, debes compilar el cuerpo
+    CONSTRUCTOR FUNCTION T_DEPARTAMENTO (
+        p_department_id   NUMBER,
+        p_department_name VARCHAR2
+    ) RETURN SELF AS RESULT
 );
+/
+-- TYPE BODY T_DEPARTAMENTO 
+-- Si definiste un constructor explícito para T_DEPARTAMENTO, debes compilar el cuerpo:
+CREATE OR REPLACE TYPE BODY T_DEPARTAMENTO AS
+    --
+    CONSTRUCTOR FUNCTION T_DEPARTAMENTO(
+        p_department_id   NUMBER,
+        p_department_name VARCHAR2
+    ) RETURN SELF AS RESULT
+    IS
+    BEGIN
+        SELF.department_id   := p_department_id;
+        SELF.department_name := p_department_name;
+        RETURN;
+    END T_DEPARTAMENTO;
+END T_DEPARTAMENTO;
 /
 --
 -- C. Tipo de Objeto: T_EMPLEADO (Objeto con Métodos)
@@ -2935,14 +2981,14 @@ CREATE OR REPLACE TYPE T_DEPARTAMENTO AS OBJECT (
 -- Además, encapsulamos lógica de negocio (Métodos).
 CREATE OR REPLACE TYPE T_EMPLEADO AS OBJECT (
     -- Atributos básicos de EMPLOYEES
-    employee_id     NUMBER(6),
+    employee_id     VARCHAR2(10),
     first_name      VARCHAR2(20),
     last_name       VARCHAR2(25),
     salary          NUMBER(6),
     --
     -- Atributos que son otros objetos (Composición)
     puesto      T_JOB,
-    ubicacaion  T_DEPARTAMENTO,
+    ubicacion   T_DEPARTAMENTO,
     --
     -- Constructor (Método que crea el objeto)
     CONSTRUCTOR FUNCTION T_EMPLEADO(p_id NUMBER)
@@ -2952,8 +2998,11 @@ CREATE OR REPLACE TYPE T_EMPLEADO AS OBJECT (
     MEMBER FUNCTION fn_salario_anual RETURN NUMBER,
     --
     -- Método que muestra los datos del empleado
-    MEMBER PROCEDURE pr_mostrar_info
-);
+    MEMBER PROCEDURE pr_mostrar_info,
+    --
+    -- Metodo Static
+    STATIC PROCEDURE pr_auditoria_log(p_employee_id NUMBER)
+) NOT FINAL;
 /
 --
 -- 2. mplementación de Métodos y Lógica
@@ -2967,6 +3016,10 @@ CREATE OR REPLACE TYPE BODY T_EMPLEADO AS
         RETURN SELF AS RESULT
     IS
         -- Variables intermedias para la consulta y creación de objetos anidados
+        v_employee_id   employees.employee_id%TYPE;
+        v_first_name    employees.first_name%TYPE;
+        v_last_name     employees.last_name%TYPE;
+        v_salary        employees.salary%TYPE;
         v_job_id        jobs.job_id%TYPE;
         v_job_title     jobs.job_title%TYPE;
         v_dept_id       departments.department_id%TYPE;
@@ -2979,17 +3032,24 @@ CREATE OR REPLACE TYPE BODY T_EMPLEADO AS
             j.job_id, j.job_title,
             d.department_id, d.department_name
         into
-            SELF.employee_id, SELF.first_name, SELF.last_name, SELF.salary,
+            v_employee_id, v_first_name, v_last_name, v_salary,
+            --SELF.employee_id, SELF.first_name, SELF.last_name, SELF.salary, -- -- Asignar directamente a SELF o a variables
             v_job_id, v_job_title,
             v_dept_id, v_dept_name
-        from employees e
-        join job j on e.job_id = j.job_id
-        join departments d on e.department_id = d.department_id
-        where employee_id = p_id;
+        from employees e, jobs j, departments d
+        where e.employee_id = p_id
+            and e.department_id = d.department_id
+            and e.job_id = j.job_id;
         --
-        -- 2. Crear las instancias de objetos anidados usando PL/SQL (CORRECCIÓN CLAVE)
-        SELF.puesto := T_JOB(v_job_id, v_job_title);
-        SELF.ubicacion := T_DEPARTAMENTO(v_dept_id, v_dept_name);
+        -- 2. Asignar atributos directos
+        SELF.employee_id    := v_employee_id;
+        SELF.first_name     := v_first_name;
+        SELF.last_name      := v_last_name;
+        SELF.salary         := v_salary;
+        --
+        -- 3. Crear las instancias de objetos anidados usando PL/SQL
+        SELF.puesto     := T_JOB(v_job_id, v_job_title);
+        SELF.ubicacion  := T_DEPARTAMENTO(v_dept_id, v_dept_name);
         --
         return;
     END T_EMPLEADO;
@@ -3017,17 +3077,30 @@ CREATE OR REPLACE TYPE BODY T_EMPLEADO AS
         DBMS_OUTPUT.PUT_LINE('Salario Anual Calculado: ' || TO_CHAR(SELF.fn_salario_anual, '$999,999.00'));
         DBMS_OUTPUT.PUT_LINE('------------------------------------');
     END pr_mostrar_info;
-END;
+    --
+    -- Método Statico
+    STATIC PROCEDURE pr_auditoria_log(p_employee_id NUMBER) 
+    IS 
+    BEGIN
+        insert into audit_log (user_name, action_type, table_name, action_time)
+        values (USER, 'SELECT DATA EMPLOYEE ID ' || p_employee_id, 'EMPLOYEES', SYSDATE);
+        COMMIT;
+        DBMS_OUTPUT.PUT_LINE('Se detectó y audito una busqueda del empleado con ID ' || p_employee_id);
+    END pr_auditoria_log;
+    --
+END T_EMPLEADO;
 /
 -- 
 --3. Uso del Objeto en PL/SQL
+SET SERVEROUT ON;
 DECLARE
     -- Declarar una variable cuyo tipo de dato es nuestro Tipo de Objeto
-    v_empleado T_EMPLEADO; 
+    v_empleado      T_EMPLEADO; 
+    v_employee_id   NUMBER := 100;
 BEGIN
     -- 1. Instanciar el objeto usando el Constructor
     -- Asumimos que el empleado 100 existe
-    v_empleado := T_EMPLEADO(100); 
+    v_empleado := T_EMPLEADO(v_employee_id); 
     --
     -- 2. Llamar al método del objeto (lógica encapsulada)
     v_empleado.pr_mostrar_info();
@@ -3036,6 +3109,664 @@ BEGIN
     DBMS_OUTPUT.PUT_LINE('Verificación rápida del puesto: ' || v_empleado.puesto.job_title);
     --
     -- 4. Llamar a la función
-    DBMS_OUTPUT.PUT_LINE('El salario anual por fuera es: ' || v_empleado.fn_salario_anual);
+    DBMS_OUTPUT.PUT_LINE('El salario anual por fuera es: ' || TO_CHAR(v_empleado.fn_salario_anual, '$999,999.00'));
+    DBMS_OUTPUT.PUT_LINE(CHR(10));
+    --
+   -- 5. Llamar al procedimineto static
+    T_EMPLEADO.pr_auditoria_log(v_employee_id);
 END;
 /
+--
+/** ----------------------------------------
+||  HERENCIA DE TIPOS DE OBJETO PLSQL
+|| -----------------------------------------
+|| DESCRIPCIÓN:
+|| La herencia en la Programación Orientada a Objetos (OO) en Oracle PL/SQL se implementa mediante 
+|| los Tipos de Objeto de Esquema (Schema Object Types) utilizando las cláusulas UNDER y NOT FINAL.
+||  Permite crear una jerarquía de tipos, donde un subtipo hereda las características (atributos y métodos) de un supertipo.
+|| 
+|| 1. Conceptos Clave de la Herencia en PL/SQL
+||
+|| A. Supertipo (Tipo Padre)
+|| Es la base de la jerarquía. Para que un tipo pueda ser heredado, debe ser definido como NOT FINAL (por defecto).
+||
+|| B. Subtipo (Tipo Hijo)
+|| Es el tipo que hereda. Utiliza la cláusula UNDER Supertype_Name y adquiere automáticamente todos los atributos y
+|| métodos del supertipo. Puede añadir nuevos atributos o sobrescribir (OVERRIDING) métodos heredados (polimorfismo).
+||
+||_________________________|______________________________________________________________________
+|| Cláusula                |  Propósito
+||_________________________|______________________________________________________________________
+|| FINAL / NOT FINAL       |  Controla si el tipo puede ser heredado. FINAL (por defecto) 
+||                         |  significa que no puede tener subtipos. NOT FINAL permite la herencia.
+||                         |  
+|| INSTANTIABLE /          |  Controla si se pueden crear instancias directas del tipo. 
+|| NOT INSTANTIABLE        |  NOT INSTANTIABLE convierte el tipo en abstracto (como una interfaz o una clase abstracta).
+||_________________________|______________________________________________________________________
+||
+||
+|| 2. Ejemplo de Herencia Basado en T_EMPLEADO_HERENCIA
+|| Tomaremos tu objeto T_EMPLEADO como base y crearemos un subtipo para un gerente.
+||
+|| Paso 1: Definir el Supertipo (T_EMPLEADO_HERENCIA)
+|| Para permitir la herencia, debemos asegurarnos de que el tipo no sea FINAL (en este ejemplo, lo declararemos explícitamente 
+|| para mayor claridad, aunque suele ser el predeterminado si no se especifica).
+|| 
+|| CREATE OR REPLACE TYPE T_EMPLEADO_HERENCIA AS OBJECT (
+||     employee_id     NUMBER(6),
+||     first_name      VARCHAR2(20),
+||     last_name       VARCHAR2(25),
+||     salary          NUMBER(6),
+||     puesto          T_JOB,
+||     ubicacion       T_DEPARTAMENTO,
+|| ) NOT FINAL; -- <<-- CLÁUSULA CLAVE PARA PERMITIR HERENCIA
+|| /
+*/
+
+--
+-- Paso 2: Crear el Subtipo (T_GERENTE)
+-- El gerente es un empleado, pero tiene un atributo adicional (bonus) y un método de salario anual diferente.
+CREATE OR REPLACE TYPE T_GERENTE UNDER T_EMPLEADO (
+    -- Atributo nuevo, solo para gerentes
+    bonus NUMBER(8,2),
+    --
+    --
+    CONSTRUCTOR FUNCTION T_GERENTE(p_id NUMBER, p_bonus NUMBER)
+        RETURN SELF AS RESULT,
+    --
+    -- Sobreescribimos el método heredado para incluir el bono
+    OVERRIDING MEMBER FUNCTION fn_salario_anual RETURN NUMBER
+    -- Resultado: T_GERENTE hereda employee_id, first_name, salary, etc., y añade bonus.
+);
+/
+--
+-- Paso 3: Implementar el Polimorfismo (Cuerpo del Subtipo)
+-- Ahora definimos el cuerpo para el gerente, sobrescribiendo la función de salario.
+CREATE OR REPLACE TYPE BODY T_GERENTE AS
+    --
+    CONSTRUCTOR FUNCTION T_GERENTE(p_id NUMBER, p_bonus NUMBER)
+        RETURN SELF AS RESULT
+    IS
+        v_empleado T_EMPLEADO;
+    BEGIN
+        -- 1. Crear el objeto padre (llama al constructor de T_EMPLEADO)
+        v_empleado := T_EMPLEADO(p_id); 
+        --
+        -- 2. Copiar los atributos del padre al hijo (SELF)
+        SELF := TREAT(v_empleado AS T_GERENTE);
+        --
+        -- 3. Asignar el atributo propio del subtipo
+        SELF.bonus := p_bonus;
+        --
+        return;
+    END T_GERENTE;
+    --
+    -- Sobrescribimos la función heredada
+    OVERRIDING MEMBER FUNCTION fn_salario_anual RETURN NUMBER
+    IS
+        v_salario_empleado NUMBER;
+    BEGIN
+        -- Llamada al método del supertipo (empleado) para obtener el salario base.
+        -- Se usa SELF.fn_salario_anual para acceder al método del SUPERTYPE (T_EMPLEADO)
+        -- Si fn_salario_anual fuera un método final en el supertipo, no se podría sobrescribir.
+        v_salario_empleado := (SELF AS T_EMPLEADO).fn_salario_anual();
+        --
+        -- Añadir el bono al cálculo
+        return v_salario_empleado + SELF.bonus;
+    END fn_salario_anual;
+    --
+    -- El resto de los métodos y el constructor (si es necesario) también deben definirse.
+    -- Si el constructor no se define explícitamente, se hereda.
+END T_GERENTE;
+/
+--
+-- 3. Uso y Polimorfismo en la Práctica
+-- El valor real de la herencia y el polimorfismo se ve cuando utilizas una variable del supertipo (T_EMPLEADO)
+-- para referenciar un objeto del subtipo (T_GERENTE).
+DECLARE
+    -- Variable del Supertipo (para probar polimorfismo)
+    v_persona T_EMPLEADO; 
+    --
+    -- Variables para almacenar valores esperados
+    v_salario_base    NUMBER := 60000;
+    v_bonus           NUMBER := 10000;
+    v_id_empleado     CONSTANT NUMBER := 100; -- Asegúrate de que este ID exista en EMPLOYEES
+    v_id_gerente      CONSTANT NUMBER := 101; -- Asegúrate de que este ID exista en EMPLOYEES (usado para la instancia del gerente)
+    --
+BEGIN
+    DBMS_OUTPUT.PUT_LINE('--- INICIO DEL TEST DE OBJETOS OO ---');
+    --
+    --------------------------------------------------
+    -- TEST 1: EMPLEADO REGULAR (Composición y Método Base)
+    --------------------------------------------------
+    --
+    -- Instanciar T_EMPLEADO (llama al constructor que consulta las 3 tablas)
+    v_persona := T_EMPLEADO(v_id_empleado);
+    --
+    DBMS_OUTPUT.PUT_LINE(CHR(10) || '>> TEST 1: EMPLEADO REGULAR (' || v_id_empleado || ')');
+    --
+    -- 1.1. Prueba de Composición (Acceso a atributos anidados)
+    IF v_persona.puesto.job_title IS NOT NULL THEN
+        DBMS_OUTPUT.PUT_LINE('   [OK] Composición: Puesto de trabajo encontrado: ' || v_persona.puesto.job_title);
+    ELSE
+        DBMS_OUTPUT.PUT_LINE('   [FALLO] Composición: Puesto de trabajo es NULL. Constructor fallido.');
+    END IF;
+    --
+    -- 1.2. Prueba de Método Miembro (Lógica Base)
+    -- El salario anual esperado es: v_persona.salary * 12
+    DBMS_OUTPUT.PUT_LINE('   Salario Anual (Base): ' || v_persona.fn_salario_anual);
+    v_persona.pr_mostrar_info();
+    --
+    --
+    --------------------------------------------------
+    -- TEST 2: GERENTE (Herencia y Polimorfismo)
+    --------------------------------------------------
+    --
+    -- Asignamos un nuevo objeto a la misma variable del supertipo (v_persona).
+    -- NOTA: T_GERENTE debería usar un constructor que acepte el ID y el BONUS.
+    -- (Asumiendo que el constructor de T_GERENTE llama internamente al constructor de T_EMPLEADO y luego asigna el bono).
+    -- Para este ejemplo, simplificaremos creando un T_EMPLEADO y luego haciendo CAST.
+    --
+    -- Crear una instancia de T_GERENTE (necesitas un constructor explícito para Gerente)
+    -- Si tu constructor de T_GERENTE acepta (ID, BONUS): v_persona := T_GERENTE(v_id_gerente, v_bonus);
+    --
+    -- SIMULACIÓN con CAST (Si T_GERENTE no tiene un constructor completo):
+    --
+    -- 1. Instanciar empleado base
+    v_persona := T_EMPLEADO(v_id_gerente); 
+    --
+    -- 2. Convertir y asignar el bono.
+    -- La instancia debe ser del tipo T_GERENTE para asignar el 'bonus'.
+    -- Asumiremos que el empleado 101 es un gerente y le damos un bono:
+    v_persona := T_GERENTE(v_persona.employee_id, v_persona.first_name, v_persona.last_name, v_persona.salary, v_persona.puesto, v_persona.ubicacion, v_bonus);
+    --
+    -- La forma más limpia si T_GERENTE tiene su propio constructor (asumiendo que acepta todos los datos de T_EMPLEADO + bonus):
+    -- v_persona := T_GERENTE(v_id_gerente); -- LLamada al constructor de T_GERENTE (que internamente llama al de T_EMPLEADO y asigna un bonus)
+    --
+    DBMS_OUTPUT.PUT_LINE(CHR(10) || '>> TEST 2: GERENTE (Polimorfismo)');
+    --
+    -- 2.1. Prueba de Polimorfismo (Llamada al método sobrescrito)
+    -- El mismo método fn_salario_anual ahora debe incluir el bono.
+    DBMS_OUTPUT.PUT_LINE('   Salario Anual (Gerente - Polimórfico): ' || v_persona.fn_salario_anual);
+    --
+    -- 2.2. Uso del método del Supertipo (pr_mostrar_info)
+    -- El gerente usa el procedimiento del empleado base, pero el cálculo del salario será el sobrescrito.
+    v_persona.pr_mostrar_info(); 
+    --
+    --------------------------------------------------
+    -- TEST 3: Método Estático (Auditoría)
+    --------------------------------------------------
+    DBMS_OUTPUT.PUT_LINE(CHR(10) || '>> TEST 3: MÉTODO ESTÁTICO');
+    --
+    -- Los métodos estáticos se invocan directamente desde el Tipo, no desde la instancia.
+    T_EMPLEADO.pr_auditoria_log(v_id_empleado); 
+    --
+    DBMS_OUTPUT.PUT_LINE(CHR(10) || '--- FIN DEL TEST ---');
+    --
+EXCEPTION
+    WHEN NO_DATA_FOUND THEN
+        DBMS_OUTPUT.PUT_LINE('ERROR: No se encontró el empleado con ID ' || v_id_empleado || ' o ' || v_id_gerente || '. Asegúrate de que existan en la tabla EMPLOYEES.');
+    WHEN OTHERS THEN
+        DBMS_OUTPUT.PUT_LINE('ERROR INESPERADO: ' || SQLERRM);
+END;
+/
+/** ----------------------------------------
+||  JSON EN ORACLE versión 12c R2
+|| -----------------------------------------
+|| DESCRIPCIÓN:
+|| El soporte para JSON en Oracle Database es muy completo y se ha mejorado significativamente desde 
+|| la versión 12c R2, permitiendo almacenar, consultar, indexar y manipular datos JSON de forma nativa 
+|| dentro de columnas de tipo VARCHAR2, CLOB o BLOB.
+||
+|| 1.Almacenamiento y Validación
+||   No existe un tipo de dato JSON dedicado en Oracle (como en PostgreSQL o MySQL). En su lugar, 
+||   se utilizan tipos estándar con una restricción de validación:
+||
+||   Almacenamiento: Los documentos JSON se almacenan comúnmente en columnas de tipo VARCHAR2 
+||   (para documentos pequeños), CLOB (para documentos grandes, hasta 4 GB) o BLOB.
+||
+||   Validación: Para asegurar que el contenido de la columna es un JSON válido, se utiliza una 
+||   restricción de verificación (CHECK constraint):
+*/
+--
+CREATE TABLE my_data_oracle_12cR2(
+    id NUMBER,
+    data_json VARCHAR2(4000)
+        CONSTRAINT check_json CHECK(data_json IS JSON) -- << Esta es la clave
+);
+--
+BEGIN
+   INSERT INTO my_data_oracle_12cR2 (id, data_json) VALUES (
+        1,
+        '{
+            "recipe_name": "Bandeja Paisa",
+            "servings": 2,
+            "ingredients": [
+                {"item": "Arroz", "qty": 200, "unit": "g"},
+                {"item": "Frijoles", "qty": 300, "unit": "g"},
+                {"item": "Carne Molida", "qty": 250, "unit": "g"},
+                {"item": "Huevo", "qty": 2, "unit": "unidades"}
+            ],
+            "steps_count": 8
+        }'
+    );
+    --
+    INSERT INTO my_data_oracle_12cR2 (id, data_json) VALUES (
+        2,
+        '{
+            "recipe_name": "Sancocho de Gallina",
+            "servings": 6,
+            "ingredients": [
+                {"item": "Gallina", "qty": 1, "unit": "entera"},
+                {"item": "Yuca", "qty": 400, "unit": "g"},
+                {"item": "Plátano Verde", "qty": 2, "unit": "unidades"},
+                {"item": "Mazorca", "qty": 3, "unit": "unidades"}
+            ],
+            "steps_count": 6
+        }'
+    );
+    --
+    INSERT INTO my_data_oracle_12cR2 (id, data_json) VALUES (
+        3,
+        '{
+            "recipe_name": "Arepas de Queso",
+            "servings": 4,
+            "ingredients": [
+                {"item": "Harina de Maíz", "qty": 500, "unit": "g"},
+                {"item": "Queso Campesino", "qty": 200, "unit": "g"},
+                {"item": "Mantequilla", "qty": 50, "unit": "g"},
+                {"item": "Leche", "qty": 250, "unit": "ml"}
+            ],
+            "steps_count": 4
+        }'
+    );
+    --
+    INSERT INTO my_data_oracle_12cR2 (id, data_json) VALUES (
+        4,
+        '{
+            "recipe_name": "Lechona Tolimense",
+            "servings": 10,
+            "ingredients": [
+                {"item": "Cerdo", "qty": 5, "unit": "kg"},
+                {"item": "Arveja", "qty": 1000, "unit": "g"},
+                {"item": "Arroz", "qty": 500, "unit": "g"},
+                {"item": "Cebolla", "qty": 4, "unit": "unidades"}
+            ],
+            "steps_count": 12
+        }'
+    );
+    --
+    INSERT INTO my_data_oracle_12cR2 (id, data_json) VALUES (
+        5,
+        '{
+            "recipe_name": "Postre de Natas",
+            "servings": 6,
+            "ingredients": [
+                {"item": "Leche", "qty": 1000, "unit": "ml"},
+                {"item": "Azúcar", "qty": 300, "unit": "g"},
+                {"item": "Huevos", "qty": 6, "unit": "unidades"},
+                {"item": "Canela", "qty": 1, "unit": "rama"}
+            ],
+            "steps_count": 5
+        }'
+    );
+    COMMIT;
+END;
+--
+--------------------------------------------------
+-- 2. Consultas JSON (SQL/JSON Functions)
+--    Oracle ofrece funciones SQL/JSON estándar para consultar y extraer datos 
+--    de documentos JSON sin necesidad de convertir el texto a objetos PL/SQL.
+--
+--  A. Extracción de Valores (JSON_VALUE)
+--     Se utiliza para extraer un valor escalar (número, cadena, booleano) de un documento.
+--------------------------------------------------
+--
+-- Extraer el nombre del cliente de un documento JSON
+SELECT JSON_VALUE(data_json, '$.recipe_name') AS colombian_dish
+FROM my_data_oracle_12cR2
+WHERE JSON_VALUE(data_json, '$.servings') = 6;
+--
+--------------------------------------------------
+-- B. Consulta de Documentos (JSON_QUERY)
+--   Se utiliza para extraer un fragmento del JSON (un objeto o un array).
+--------------------------------------------------
+-- Extraer el array completo de ítems del pedido
+SELECT JSON_QUERY(data_json, '$.ingredients') AS order_items_array
+FROM my_data_oracle_12cR2
+WHERE id = 5;
+--
+--------------------------------------------------
+-- C. Consulta Avanzada y Tablas Virtuales (JSON_TABLE)
+--   JSON_TABLE es la función más potente. Permite transformar arrays o estructuras 
+--   complejas dentro del JSON en filas y columnas relacionales temporales (una tabla virtual), facilitando las uniones y el procesamiento masivo.
+--------------------------------------------------
+--
+-- Convertir el array de ítems en filas relacionales
+SELECT 
+    jt.item,
+    jt.qty,
+    jt.unit
+FROM my_data_oracle_12cR2 d,
+    JSON_TABLE(
+        d.data_json, '$.ingredients[*]'
+        COLUMNS(
+            item VARCHAR2(100) PATH '$.item',
+            qty  NUMBER PATH '$.qty',
+            unit VARCHAR2(50) PATH '$.unit'
+        )
+    ) AS jt
+WHERE id = 5;
+--
+--
+--------------------------------------------------
+-- 3. Manipulación (Creación y Modificación)
+--   Oracle proporciona funciones para construir nuevos documentos JSON y modificar documentos existentes
+--
+--  A. Creación (JSON_OBJECT, JSON_ARRAY)
+--    Estas funciones construyen JSON a partir de datos relacionales:
+--------------------------------------------------
+--
+-- Crear un objeto JSON a partir de datos relacionales
+SELECT 
+    JSON_OBJECT(
+        'id'        : employee_id,
+        'full_name' : first_name || ' ' || last_name,
+        'salary'    : salary,
+        'email'     : email,
+        'job_id'    : job_id
+    ) AS json_employee
+FROM employees
+WHERE employee_id = 100;
+--
+--------------------------------------------------
+-- B. Modificación (JSON_MERGEPATCH, JSON_TRANSFORM)
+--    JSON_MERGEPATCH: Aplica un "parche" JSON para actualizar, insertar o eliminar valores. Es simple para cambios directos.
+--
+--  JSON_TRANSFORM (Recomendado): Permite realizar múltiples operaciones de inserción, actualización y eliminación de forma segura.
+--------------------------------------------------
+--
+UPDATE my_data_oracle_12cR2
+SET data_json = JSON_TRANSFORM(
+    data_json,
+    SET '$.recipe_name' = 'Postre de Natas2',   -- Modificar valor existente
+    INSERT '$.audit_date' = SYSDATE   -- Insertar nuevo campo
+)
+WHERE id = 5;
+--
+--
+SELECT JSON_VALUE(data_json, '$.recipe_name') AS colombian_dish,
+       JSON_VALUE(data_json, '$.audit_date') AS new_campo 
+FROM my_data_oracle_12cR2
+WHERE JSON_VALUE(data_json, '$.servings') = 6;
+--
+/** ----------------------------------------
+||  JSON EN ORACLE versión 21c y posteriores
+|| -----------------------------------------
+|| DESCRIPCIÓN:
+|| Oracle ha añadido un tipo de dato dedicado para JSON en sus versiones más recientes. 
+|| Sin embargo, su soporte para JSON ha evolucionado a lo largo de varias versiones.
+||
+|| El soporte nativo recomendado es el tipo de dato JSON, que debutó en Oracle Database 
+|| 21c (aunque parte de la funcionalidad binaria estaba disponible experimentalmente en versiones anteriores).
+||
+|| === Evolución del Almacenamiento JSON en Oracle ===
+||
+||_____________________|___________________________|____________________________________________________________
+|| Versión             |  Tipo de Almacenamiento   |  Característica Clave
+||                     |  Principal                |
+||_____________________|___________________________|_____________________________________________________________
+|| 12c R2              |  VARCHAR2, CLOB, o BLOB   |  JSON se almacena como texto. La validación se f
+|| (y anteriores)      |                           |  uerza mediante la restricción CHECK (columna IS JSON).
+||_____________________|___________________________|_____________________________________________________________
+||                     |                           |
+|| Oracle Database 21c |  JSON (Tipo de Dato SQL)  | Almacenamiento en formato binario optimizado llamado
+|| y Posteriores       |                           | OSON (Oracle's Optimized JSON format). Esto evita el 
+||                     |                           | costoso parsing repetido y mejora el rendimiento.
+||_____________________|___________________________|_____________________________________________________________
+*/
+--
+CREATE TABLE my_orders(
+    order_id    NUMBER,
+    order_data  JSON-- << Tipo de dato nativo JSON
+);
+--
+-- ----------------------------------------
+-- VENTAJAS DE USAR EL TIPO JSON:
+--
+-- 1. Rendimiento: 
+--    - Utiliza el formato binario OSON, diseñado para una consulta y actualización más rápidas.
+--
+-- 2. Garantía de Validez:
+--    - El dato siempre está garantizado como JSON bien formado (no se necesita una restricción CHECK explícita).
+--
+-- 3. Transparencia:
+--    - Internamente, Oracle maneja la complejidad, permitiéndote usar las funciones SQL/JSON 
+--      (JSON_VALUE, JSON_TABLE, etc.) de la misma manera que antes, pero con mayor eficiencia.
+--
+-- SOPORTE UNIVERSAL (FUNCIONALIDADES SQL/JSON):
+--
+-- Independientemente de si usas JSON, VARCHAR2 o CLOB para el almacenamiento, las funcionalidades 
+-- de Oracle para manejar datos JSON son universales y se basan en las funciones SQL/JSON:
+--
+-- 1. Consulta:
+--    - Usa el operador de punto (.) o JSON_VALUE para extraer valores escalares.
+--    - Usa JSON_QUERY para extraer fragmentos de objeto o array.
+--
+-- 2. Filtrado:
+--    - Usa JSON_EXISTS para verificar la existencia de un nodo.
+--
+-- 3. Conversión:
+--    - Usa JSON_TABLE para "aplanar" estructuras JSON complejas (especialmente arrays) 
+--      en filas y columnas relacionales temporales.
+--
+-- 4. Modificación:
+--    - Usa JSON_TRANSFORM para realizar inserciones, actualizaciones y eliminaciones 
+--      seguras dentro del documento.
+--
+-- NOTA: En Oracle 12c R2, aunque no existe el tipo de dato JSON nativo, todas las funciones
+-- SQL/JSON están disponibles y son completamente funcionales con tipos VARCHAR2 y CLOB.
+--
+-- Ejemplo de creación de tabla en 12c R2:
+--   CREATE TABLE mi_tabla_json (
+--       id NUMBER PRIMARY KEY,
+--       datos_json CLOB CHECK (datos_json IS JSON)
+--   );
+-- ---------------------------------------- 
+--
+--
+--
+/** ----------------------------------------
+||  OBJETOS JSON, Constructores y Metodos
+|| -----------------------------------------
+|| DESCRIPCIÓN:
+|| Aunque Oracle maneja JSON principalmente a través de funciones SQL/JSON, puedes encapsular la manipulación 
+|| de JSON dentro de tus Tipos de Objeto de PL/SQL usando métodos y constructores.
+||
+|| Aquí te muestro cómo fusionar ambos conceptos.
+||
+|| 1. Modelado del Objeto (T_JSON_HANDLER)
+||    Definiremos un Tipo de Objeto que encapsula un documento JSON y proporciona métodos para interactuar con él.
+*/
+--
+CREATE OR REPLACE TYPE T_JSON_HANDLER AS OBJECT(
+    -- Atributo que almacena el documento JSON
+    json_data CLOB,
+    --
+    -- Constructor para inicializar el objecto
+    CONSTRUCTOR FUNCTION T_JSON_HANDLER(p_json_string IN CLOB)
+        RETURN SELF AS RESULT,
+    --
+    -- Metodo para extraer un valor (Wrapper para JSON_VALUE)
+    MEMBER FUNCTION fn_get_value(p_path IN VARCHAR2)
+        RETURN VARCHAR2
+);
+/
+--
+-- ----------------------------------------
+-- 2. Implementación de Métodos y Constructor
+--     El cuerpo del tipo implementa la lógica usando las funciones SQL/JSON estándar de Oracle.
+-- -----------------------------------------
+--
+CREATE OR REPLACE TYPE BODY T_JSON_HANDLER AS 
+    --
+    -- CONSTRUCTOR: Inicializa el objecto con el string JSON
+    CONSTRUCTOR FUNCTION T_JSON_HANDLER(p_json_string IN CLOB)
+        RETURN SELF AS RESULT
+    IS
+    BEGIN
+        -- Puedes añadir una verificación de validez aquí si la columna no fuera JSON type
+        if p_json_string IS JSON then
+            SELF.json_data := p_json_string;
+        else
+            RAISE_APPLICATION_ERROR(-20001, 'El string proporcionado no es JSON válido.');
+        end if;
+        --
+        return;
+    END T_JSON_HANDLER;
+    --
+    -- Metodo: Extraer un valor
+    MEMBER FUNCTION fn_get_value(p_path IN VARCHAR2)
+        RETURN VARCHAR2
+    IS
+    BEGIN
+        -- Usa JSON_VALUE para consultar el dato encapsulado (SELF.json_data)
+        return JSON_VALUE(SELF.json_data, p_path);
+        --
+    EXCEPTION
+        when OTHERS then
+            return null;
+            --
+    END fn_get_value;
+    --
+END T_JSON_HANDLER;
+/
+--
+-- ----------------------------------------
+-- 3. Bloque de Prueba (Uso en PL/SQL)
+--    Este bloque demuestra cómo usar el constructor para crear el objeto y los métodos para 
+--    interactuar con el JSON sin exponer las funciones SQL/JSON directamente al usuario.
+-- -----------------------------------------
+--
+DECLARE
+    -- Instancia de nuestro objeto manejador de JSON
+    v_handler       T_JSON_HANDLER;
+    v_data_inicial  CLOB;
+    v_estado_actual VARCHAR2(50);
+BEGIN
+    -- 1. Definir en JSON inicial
+    v_data_inicial := '{"order_id": 105, "status": "Pending", "client": {"name": "Alex"}, "amount": 450.50}';
+    --
+    -- 2. Instanciar el objeto usando el Constructor
+    v_handler := T_JSON_HANDLER(v_data_inicial);
+    --
+    -- 3. Usar el método para leer un valor
+    v_estado_actual := v_handler.fn_get_value('$.status');
+    DBMS_OUTPUT.PUT_LINE('Estado inicial: ' || v_estado_actual);
+    --
+    -- Opcional: Mostrar el JSON completo después de la actualización
+    DBMS_OUTPUT.PUT_LINE('JSON final: ' || v_handler.json_data);
+    --
+END;
+/
+--
+/** ----------------------------------------
+||  JSON_OBJECT_T
+|| -----------------------------------------
+|| DESCRIPCIÓN:
+|| El tipo JSON_OBJECT_T es un tipo de objeto de PL/SQL que forma parte del paquete APEX_JSON o del paquete 
+|| DBMS_JSON (disponible en versiones recientes de Oracle, 18c en adelante). Es fundamental para trabajar con 
+|| JSON en el contexto de PL/SQL, ya que permite analizar (parsear) y manipular documentos JSON completos en 
+|| memoria como si fueran objetos PL/SQL, en lugar de solo consultar valores con funciones SQL/JSON.
+||
+|| ----------------------------------
+|| ¿Qué es JSON_OBJECT_T?
+|| ----------------------------------
+|| JSON_OBJECT_T es la representación en PL/SQL de un Objeto JSON (delimitado por llaves {}), y es el tipo base 
+|| para trabajar con la librería nativa de manipulación JSON dentro de los bloques de código PL/SQL.
+||
+||_____________________________|______________________________________________________
+|| Tipo de Dato JSON	       | Tipo de Objeto PL/SQL
+||_____________________________|______________________________________________________
+|| Objeto JSON ({...})         | JSON_OBJECT_T
+||                             |
+|| Array JSON ([...])          | JSON_ARRAY_T
+||                             |
+|| ualquier valor JSON         | JSON_ELEMENT_T (Superclase para todos los tipos JSON)
+||_____________________________|_______________________________________________________
+||
+||
+|| Uso y Métodos Clave
+|| Para usar JSON_OBJECT_T, primero debes convertir un string JSON (VARCHAR2 o CLOB) en el objeto de PL/SQL.
+||
+|| 1. Constructor
+||    Se utiliza el contructor para crear o convertir el objecto
+*/
+DECLARE
+    v_json_text VARCHAR(100) := '{"name": "Client A", "id": 101}';
+    v_object    JSON_OBJECT_T;
+BEGIN
+    -- Crear una instancia del objeto a partir de la cadena de texto
+    v_object := JSON_OBJECT_T(v_json_text);
+    -- ...
+END;
+/
+--
+-- ----------------------------------------
+-- 2. Métodos Comunes
+--    Una vez que tienes el objeto JSON_OBJECT_T, puedes usar sus métodos para inspeccionar, 
+--    agregar, modificar o eliminar pares clave-valor.
+-- -----------------------------------------
+--
+--______________________|_______________________________________|________________________________________________
+-- Método               |  Propoosito                           |  Ejemplo (en un objeto v_object)
+--______________________|_______________________________________|________________________________________________
+--                      |                                       |
+-- .get_string('key')   | Obtiene el valor de una clave         | v_name := v_object.get_string('name');
+--                      | como cadena.                          |
+--                      |                                       |
+-- .get_number('key')   | Obtiene el valor de una clave         | v_id := v_object.get_number('id');
+--                      | como número.                          |
+--                      |                                       |
+-- .put('key', value)   | Inserta un nuevo par o actualiza      | v_object.put('status', 'Active');
+--                      | uno existente.                        |
+--                      |                                       |
+-- .remove('key')       | Elimina un par clave-valor del        | v_object.remove('id');
+--                      | objeto.                               |
+--                      |                                       |
+-- .has('key')          | Devuelve TRUE si la clave existe      | IF v_object.has('status') THEN ...
+--                      | en el objeto.                         |
+--                      |                                       |
+-- .to_string           | Convierte el objeto de vuelta a       | DBMS_OUTPUT.PUT_LINE(v_object.to_string);
+--                      | una cadena JSON.                      |                                
+--______________________|_______________________________________|________________________________________________
+--
+--
+-- Ventaja Principal: Manipulación Detallada
+-- La gran ventaja de JSON_OBJECT_T sobre las funciones SQL/JSON es cuando necesitas manipulación iterativa o 
+-- condicional compleja dentro de bloques PL/SQL.
+-- 
+-- Ejemplo: Recorrer dinámicamente todas las claves de un objeto JSON y aplicar una lógica basada en el valor.
+--
+DECLARE
+    v_object JSON_OBJECT_T := JSON_OBJECT_T('{"A": 10, "B": 20, "C": 30}');
+    v_keys   JSON_KEY_LIST;
+BEGIN
+    -- Obtener lalista de todas las claves
+    v_keys := v_object.get_keys;
+    --
+    for i in 1..v_keys.COUNT loop
+        DBMS_OUTPUT.PUT_LINE('Key: ' || v_keys(i) || ', Value: ' || v_object.get_number(v_keys(i)));
+        --
+        -- Lógica condicional: si el valor es 0, cambiarlo a 200
+        if v_object.get_number(v_keys(i)) = 20 then 
+            v_object.put(v_keys(i), 200);
+            DBMS_OUTPUT.PUT_LINE('  --> Valor de ' || v_keys(i) || ' cambiado a 200.');
+        end if;
+    end loop;
+    --
+    DBMS_OUTPUT.PUT_LINE(CHR(10) || '----------------------------------------');
+    DBMS_OUTPUT.PUT_LINE('Final JSON: ' || v_object.to_string);
+    DBMS_OUTPUT.PUT_LINE('----------------------------------------');
+    --
+END;
